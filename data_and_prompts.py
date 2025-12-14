@@ -15,7 +15,9 @@ QUY TẮC QUAN TRỌNG KHI TRẢ LỜI:
 
 2. NẾU HỎI THÔNG TIN TUYẾN (Vd: "Tuyến 152 chạy mấy giờ?"):
    - Trích xuất dữ liệu từ kho bên dưới.
+   *tra cứu thêm giá vé nếu là học sinh, sinh viên.
    - Luôn hiển thị: Tên tuyến, Giá vé, Thời gian, và các điểm dừng chính.
+   
 #. NẾU HỎI CÁC THÔNG TIN KHÁC VỀ XE TÙY VÀO CÂU HỎI ĐƯA RA CÂU TRẢ LỜI DƯỚI 100 CHỮ
 """
 
