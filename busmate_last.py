@@ -39,7 +39,7 @@ with st.sidebar:
         GEMINI_API_KEY = st.text_input("✨ Gemini API Key", type="password")
     
     st.markdown("---")
-    st.info("Chế độ: Dẫn đường Real-time (Theo dõi GPS).")
+    st.info("Chế độ: Dẫn đường Real-time & Giọng nói AI.")
 
 # ================= AI CONFIG =================
 if GEMINI_API_KEY:
@@ -56,15 +56,30 @@ if "last_voice" not in st.session_state:
 if "map_origin" not in st.session_state: st.session_state.map_origin = ""
 if "map_dest" not in st.session_state: st.session_state.map_dest = ""
 
+# ================= UI LAYOUT & PLACEHOLDERS =================
+st.title("BusMate - Dẫn đường thời gian thực")
+
+# [QUAN TRỌNG] Tạo một khung cố định cho âm thanh để tránh chồng chéo
+# Khung này sẽ luôn được làm mới mỗi khi trang rerun
+sound_placeholder = st.empty()
+
+col_control, col_map = st.columns([1, 1.2])
+
 # ================= UTILS =================
 def speak(text):
+    """Phát giọng nói AI vào khung cố định (sound_placeholder)"""
     if HAS_GTTS:
         try:
             import io
             fp = io.BytesIO()
             gTTS(text=text, lang="vi").write_to_fp(fp)
             fp.seek(0)
-            st.audio(fp, format='audio/mp3', autoplay=True)
+            
+            # Sử dụng sound_placeholder để ghi đè âm thanh cũ
+            # Thêm key=uuid để đảm bảo trình duyệt nhận diện đây là file audio mới
+            with sound_placeholder.container():
+                st.audio(fp, format='audio/mp3', autoplay=True)
+                
         except Exception as e:
             st.warning(f"Lỗi âm thanh: {e}")
 
@@ -92,7 +107,6 @@ def render_map(origin, destination, api_key):
     </div>
     """
 
-# ================= AI: PARSE USER INTENT =================
 def ai_parse_input(user_text):
     prompt = f"""
     Người dùng khiếm thị nói: "{user_text}"
@@ -105,10 +119,7 @@ def ai_parse_input(user_text):
     except:
         return ""
 
-# ================= UI LAYOUT =================
-st.title("BusMate - Dẫn đường thời gian thực")
-
-col_control, col_map = st.columns([1, 1.2])
+# ================= UI IMPLEMENTATION =================
 
 with col_map:
     st.markdown("### 🗺️ Bản đồ hỗ trợ")
@@ -123,17 +134,19 @@ with col_control:
     with c1:
         if st.button("▶️ Bắt đầu Dẫn đường", use_container_width=True):
             st.session_state.running = True
-            st.session_state.last_voice = ""
+            st.session_state.last_voice = "" # Reset giọng nói khi bắt đầu mới
             st.rerun()
     with c2:
         if st.button("⏹️ Dừng lại", use_container_width=True):
             st.session_state.running = False
             st.session_state.last_voice = ""
+            # Xóa âm thanh đang phát bằng cách làm rỗng placeholder
+            sound_placeholder.empty()
             st.rerun()
 
-    # ================= MAIN LOGIC (REAL-TIME NAVIGATION) =================
+    # ================= MAIN LOGIC =================
     if st.session_state.running:
-        st.info("🟢 Đang theo dõi lộ trình...")
+        st.info("🟢 Đang theo dõi lộ trình & Giọng nói...")
         
         if not user_input:
             speak("Vui lòng nhập điểm đi và đến")
@@ -152,14 +165,14 @@ with col_control:
             if "origin" in l: origin_text = l.split("=")[1].strip()
             if "destination" in l: destination_text = l.split("=")[1].strip()
 
-        # Update Map State (chỉ dùng để hiển thị map tổng quan)
+        # Update Map State
         if origin_text and destination_text:
             if origin_text != st.session_state.map_origin or destination_text != st.session_state.map_dest:
                 st.session_state.map_origin = origin_text
                 st.session_state.map_dest = destination_text
                 st.rerun()
 
-        # 2. GPS Check (Bắt buộc cho chế độ Real-time)
+        # 2. GPS Check
         lat, lng = 10.7769, 106.7009
         has_real_gps = False
         
@@ -169,20 +182,18 @@ with col_control:
                 lat = loc["coords"]["latitude"]
                 lng = loc["coords"]["longitude"]
                 has_real_gps = True
-                st.success(f"📍 Vị trí hiện tại: {lat:.4f}, {lng:.4f}")
+                st.success(f"📍 GPS: {lat:.4f}, {lng:.4f}")
             else:
+                # Tăng thời gian chờ lên 5s để tránh loop quá nhanh gây chồng tiếng
                 speak("Đang tìm tín hiệu GPS")
                 st.warning("📡 Đang lấy vị trí GPS...")
-                time.sleep(3)
+                time.sleep(5) 
                 st.rerun()
         else:
-            st.warning("⚠️ Không có GPS. Dùng tọa độ giả lập để test.")
+            st.warning("⚠️ Không có GPS. Dùng tọa độ giả lập.")
 
         # 3. Logic Real-time Navigation
         try:
-            # Nguyên tắc: Tính đường từ VỊ TRÍ HIỆN TẠI (GPS) -> ĐIỂM ĐẾN
-            # Thay vì tính từ "Điểm đi nhập tay" -> "Điểm đến"
-            
             nav_origin = f"{lat},{lng}" if has_real_gps else origin_text
             
             transit_params = {
@@ -197,17 +208,16 @@ with col_control:
             
             resp = requests.get("https://maps.googleapis.com/maps/api/directions/json", params=transit_params).json()
             
-            route_steps = []
             voice_instruction = ""
             
             if resp.get("routes"):
                 legs = resp["routes"][0]["legs"][0]
                 
-                # --- PHẦN CHI TIẾT (DISPLAY) ---
+                # --- DISPLAY ---
                 duration = legs["duration"]["text"]
                 st.markdown(f"**⏱️ Thời gian còn lại:** {duration}")
                 
-                # Lấy bước đi đầu tiên (Immediate Step) cho giọng nói
+                # --- VOICE LOGIC ---
                 first_step = legs["steps"][0]
                 first_dist = first_step["distance"]["text"]
                 first_instr = clean_html(first_step["html_instructions"])
@@ -219,36 +229,31 @@ with col_control:
                     arr_time = first_step["transit_details"]["departure_time"]["text"]
                     voice_instruction = f"Đón xe số {bus_line}. Xe đến lúc {arr_time}."
                 
-                # Hiển thị danh sách đầy đủ
+                # Hiển thị chi tiết
                 st.markdown("#### 📝 Lộ trình chi tiết:")
                 for step in legs["steps"]:
                     mode = step["travel_mode"]
                     dist = step["distance"]["text"]
-                    
                     if mode == "WALKING":
                         instr = clean_html(step["html_instructions"])
                         st.info(f"🚶 **{dist}:** {instr}")
                     elif mode == "TRANSIT":
                         td = step["transit_details"]
                         line = td["line"]["short_name"]
-                        dep_stop = td["departure_stop"]["name"]
-                        arr_stop = td["arrival_stop"]["name"]
-                        time_txt = td["departure_time"]["text"]
-                        st.success(f"🚌 **Bus {line}:** {dep_stop} ➔ {arr_stop} ({time_txt})")
+                        st.success(f"🚌 **Bus {line}:** {td['departure_stop']['name']} ➔ {td['arrival_stop']['name']}")
 
             elif resp.get("status") == "ZERO_RESULTS":
-                voice_instruction = "Không tìm thấy lộ trình phù hợp từ vị trí này."
+                voice_instruction = "Không tìm thấy lộ trình phù hợp."
                 st.error(voice_instruction)
 
-            # --- PHẦN GIỌNG NÓI (SPEAK) ---
-            # Chỉ đọc hướng dẫn ngay lập tức (Immediate Action)
-            st.warning(f"🗣️ **Chỉ dẫn:** {voice_instruction}")
+            # --- KÍCH HOẠT GIỌNG NÓI AN TOÀN ---
+            st.toast(f"🗣️ AI: {voice_instruction}")
 
             if voice_instruction and voice_instruction != st.session_state.last_voice:
                 speak(voice_instruction)
                 st.session_state.last_voice = voice_instruction
 
-            # Tự động refresh nhanh hơn để bắt kịp di chuyển (10s)
+            # Refresh mỗi 10s
             time.sleep(10)
             st.rerun()
             
