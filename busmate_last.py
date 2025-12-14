@@ -165,7 +165,7 @@ if "map_origin" not in st.session_state: st.session_state.map_origin = ""
 if "map_dest" not in st.session_state: st.session_state.map_dest = ""
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = [
-        {"role": "assistant", "content": "Xin chào! Mình là trợ lý ảo VnBus 🚌. Bạn cần tìm tuyến xe nào? (Ví dụ: 'Xe 152 đi đâu?', 'Vé xe 19 bao nhiêu?')"}
+        {"role": "assistant", "content": "Xin chào! Mình là trợ lý ảo BusMate 🚌. Bạn cần tìm tuyến xe nào? (Ví dụ: 'Xe 152 đi đâu?', 'Vé xe 19 bao nhiêu?')"}
     ]
 
 # ================= UTILS =================
@@ -397,3 +397,4 @@ with tab_chat:
                     
                 except Exception as e:
                     st.error(f"Lỗi: {e}")
+
