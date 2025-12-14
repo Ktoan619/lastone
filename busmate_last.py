@@ -93,7 +93,7 @@ with st.sidebar:
 # Cấu hình Gemini
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
-    ai = genai.GenerativeModel("gemini-1.5-flash") # Sử dụng model flash như code gốc
+    ai = genai.GenerativeModel("gemini-pro") # Sử dụng model flash như code gốc
 
 # State Init
 if "running" not in st.session_state:
@@ -285,3 +285,4 @@ with col1:
 
     else:
         st.info("👋 Ứng dụng đang chờ. Nhấn **Bắt đầu** để sử dụng.")
+
