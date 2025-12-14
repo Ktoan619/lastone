@@ -42,46 +42,90 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- CSS TÙY CHỈNH (LOẠI BỎ CSS GÂY LỖI TAB) ---
+# --- CSS TÙY CHỈNH: DARK MODE (GIAO DIỆN TỐI) ---
 st.markdown("""
 <style>
-    /* 1. Nền trắng sạch cho toàn bộ App */
-    .stApp { background-color: #FFFFFF; }
-    
-    /* 2. Màu chữ Đen để dễ đọc trên nền trắng */
-    h1, h2, h3, h4, h5, h6, p, li, span, div, label { 
-        color: #212529 !important; 
+    /* 1. Nền chính (Main Background) */
+    .stApp { 
+        background-color: #0E1117; /* Màu đen xanh đậm (Dark Theme chuẩn) */
+        color: #FAFAFA;
     }
     
-    /* 3. Style Nút bấm (Xanh dương) */
-    .stButton > button {
-        background-color: #007BFF !important; 
-        color: white !important;
-        font-weight: bold; 
-        border-radius: 8px; 
-        border: none;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    .stButton > button:hover {
-        background-color: #0056b3 !important; 
+    /* 2. Sidebar (Thanh bên) */
+    [data-testid="stSidebar"] { 
+        background-color: #262730; /* Màu xám đậm hơn nền chính */
+        border-right: 1px solid #41444C;
     }
     
-    /* 4. Style Ô nhập liệu (Viền xanh) */
+    /* 3. Màu chữ (Text Colors) */
+    h1, h2, h3, h4, h5, h6, span, div, label, p, li {
+        color: #FAFAFA !important; /* Chữ trắng sáng */
+    }
+    .stCaption { color: #B0B0B0 !important; } /* Chữ chú thích màu xám nhạt */
+    
+    /* 4. Ô nhập liệu (Inputs) */
     .stTextInput > div > div > input {
-        color: #000000; 
-        background-color: #F8F9FA;
-        border: 2px solid #007BFF; 
+        color: #FAFAFA;
+        background-color: #262730; /* Nền tối đồng bộ sidebar */
+        border: 1px solid #41444C;
         border-radius: 8px;
     }
-    
-    /* 5. Sidebar (Xám nhạt) */
-    [data-testid="stSidebar"] { 
-        background-color: #F1F3F5; 
-        border-right: 1px solid #DEE2E6; 
+    .stTextInput > div > div > input:focus {
+        border-color: #007BFF;
+        box-shadow: 0 0 0 1px #007BFF;
     }
     
-    /* Chỉnh tiêu đề chính */
-    h1 { color: #007BFF !important; }
+    /* 5. Nút bấm (Buttons) */
+    .stButton > button {
+        background-color: #007BFF !important; /* Xanh dương nổi bật trên nền đen */
+        color: white !important;
+        font-weight: bold;
+        border-radius: 8px;
+        border: none;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        transition: all 0.2s;
+    }
+    .stButton > button:hover {
+        background-color: #0056b3 !important;
+        transform: translateY(-2px);
+    }
+    
+    /* 6. Tabs (Thẻ chuyển đổi) - Được thiết kế lại cho Dark Mode */
+    .stTabs [data-baseweb="tab-list"] {
+        border-bottom: 2px solid #41444C;
+        gap: 8px;
+    }
+    .stTabs button[data-baseweb="tab"] {
+        background-color: transparent;
+        border: none;
+    }
+    
+    /* Chỉnh màu chữ tiêu đề Tab */
+    .stTabs button[data-baseweb="tab"] div p {
+        color: #A6A9B4 !important; /* Xám khi chưa chọn */
+        font-weight: 600;
+        font-size: 16px;
+    }
+    
+    /* Tab đang chọn (Active) */
+    .stTabs button[data-baseweb="tab"][aria-selected="true"] div p {
+        color: #007BFF !important; /* Xanh dương sáng khi chọn */
+    }
+    .stTabs [data-baseweb="tab-highlight"] {
+        background-color: #007BFF !important; /* Gạch chân màu xanh */
+    }
+    
+    /* 7. Các khung thông báo (Alerts/Info/Success) */
+    .stAlert {
+        background-color: #262730; /* Nền tối */
+        color: #FAFAFA;
+        border: 1px solid #41444C;
+    }
+    
+    /* Tiêu đề chính */
+    h1 { 
+        color: #007BFF !important; 
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -140,12 +184,12 @@ def clean_html(t): return re.sub("<[^<]+?>", "", t)
 
 def render_map(origin, destination, api_key):
     if not api_key:
-        return """<div style="padding:20px; border:2px dashed #ccc; border-radius:10px; text-align:center; color: #666;">⚠️ Cần API Key để hiện bản đồ</div>"""
+        return """<div style="padding:20px; border:2px dashed #444; border-radius:10px; text-align:center; color: #aaa;">⚠️ Cần API Key để hiện bản đồ</div>"""
     if origin and destination:
         src = f"https://www.google.com/maps/embed/v1/directions?key={api_key}&origin={origin}&destination={destination}&mode=transit"
     else:
         src = f"https://www.google.com/maps/embed/v1/view?key={api_key}&center=10.7769,106.7009&zoom=14"
-    return f"""<div style="width:100%; height:600px; border-radius:15px; overflow:hidden; border: 2px solid #007BFF; box-shadow: 0 4px 10px rgba(0,0,0,0.1);"><iframe width="100%" height="100%" frameborder="0" style="border:0" src="{src}" allowfullscreen></iframe></div>"""
+    return f"""<div style="width:100%; height:600px; border-radius:15px; overflow:hidden; border: 2px solid #007BFF; box-shadow: 0 4px 10px rgba(0,0,0,0.5);"><iframe width="100%" height="100%" frameborder="0" style="border:0" src="{src}" allowfullscreen></iframe></div>"""
 
 def ai_parse_input(user_text):
     prompt = f"""
