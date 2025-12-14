@@ -42,7 +42,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- CSS TÙY CHỈNH (ĐƠN GIẢN HÓA ĐỂ HIỆN TAB) ---
+# --- CSS TÙY CHỈNH (LOẠI BỎ CSS GÂY LỖI TAB) ---
 st.markdown("""
 <style>
     /* 1. Nền trắng sạch cho toàn bộ App */
@@ -80,26 +80,7 @@ st.markdown("""
         border-right: 1px solid #DEE2E6; 
     }
     
-    /* 6. FIX LỖI TAB (Quan trọng: Đưa về mặc định nhưng ép màu chữ) */
-    /* Màu chữ tiêu đề Tab */
-    .stTabs button[data-baseweb="tab"] div p {
-        font-size: 18px !important;
-        font-weight: bold !important;
-        color: #007BFF !important; /* Chữ xanh cho dễ thấy */
-    }
-    
-    /* Thanh gạch chân dưới Tab đang chọn */
-    .stTabs [data-baseweb="tab-highlight"] {
-        background-color: #007BFF !important;
-        height: 3px;
-    }
-    
-    /* Đường kẻ mờ ngăn cách tab */
-    .stTabs [data-baseweb="tab-list"] {
-        border-bottom: 2px solid #DEE2E6;
-        padding-bottom: 5px;
-    }
-
+    /* Chỉnh tiêu đề chính */
     h1 { color: #007BFF !important; }
 </style>
 """, unsafe_allow_html=True)
@@ -123,7 +104,7 @@ with st.sidebar:
     
     st.markdown("---")
     enable_gps = st.checkbox("📍 Bật định vị GPS", value=True)
-    st.info("💡 Mẹo: Chọn Tab bên phải màn hình để Chatbot.")
+    st.info("💡 Mẹo: Sử dụng tab '💬 Hỏi đáp Bot' để chat.")
 
 # ================= AI CONFIG =================
 if GEMINI_API_KEY:
@@ -185,8 +166,7 @@ st.title("BusMate - Bạn đồng hành xe bus")
 # Khung âm thanh (Global)
 sound_placeholder = st.empty()
 
-# --- TẠO TAB ---
-# Sử dụng emoji lớn và tên rõ ràng để dễ thấy
+# --- TẠO TAB (Sử dụng biểu tượng emoji lớn để dễ thấy) ---
 tab_nav, tab_chat = st.tabs(["🧭 DẪN ĐƯỜNG REAL-TIME", "💬 HỎI ĐÁP BOT"])
 
 # ================= TAB 1: DẪN ĐƯỜNG =================
