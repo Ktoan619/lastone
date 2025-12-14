@@ -18,6 +18,15 @@ try:
 except ImportError:
     HAS_GEOLOCATION = False
 
+# --- Xử lý Fragment (Kỹ thuật chống nháy bản đồ) ---
+# Nếu Streamlit hỗ trợ fragment (bản mới), dùng nó để cô lập vùng cập nhật GPS.
+# Nếu không, dùng hàm giả (fallback) để code vẫn chạy (dù vẫn sẽ nháy).
+try:
+    from streamlit import fragment
+except ImportError:
+    def fragment(func):
+        return func
+
 import google.generativeai as genai
 
 # ================= CONFIG TRANG =================
@@ -27,31 +36,49 @@ st.set_page_config(
     layout="wide"
 )
 
+# --- CSS TÙY CHỈNH ---
+st.markdown("""
+<style>
+    .stApp { background-color: #FFFFFF; }
+    h1, h2, h3, h4, h5, h6, p, li, span, div, label { color: #000000 !important; }
+    .stButton > button {
+        background-color: #007BFF !important; color: white !important;
+        font-weight: bold; border-radius: 10px; border: none;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); transition: all 0.3s;
+    }
+    .stButton > button:hover {
+        background-color: #0056b3 !important; transform: translateY(-2px);
+    }
+    .stTextInput > div > div > input {
+        color: #000000; background-color: #F0F8FF;
+        border: 2px solid #007BFF; border-radius: 8px;
+    }
+    [data-testid="stSidebar"] { background-color: #F8F9FA; border-right: 1px solid #007BFF; }
+    .stAlert { border-radius: 8px; border: 1px solid rgba(0,0,0,0.1); }
+    h1 { color: #007BFF !important; }
+</style>
+""", unsafe_allow_html=True)
+
 # ================= SIDEBAR CONFIG =================
 with st.sidebar:
     st.header("Cấu hình hệ thống")
-    
-    # 1. Lấy API Key từ Secrets (Bắt buộc)
     if "GOOGLE_MAPS_API_KEY" in st.secrets:
         GOOGLE_MAPS_API_KEY = st.secrets["GOOGLE_MAPS_API_KEY"]
         st.success("✅ Google Maps API: Đã kết nối")
     else:
-        st.error("❌ Thiếu GOOGLE_MAPS_API_KEY trong secrets.toml")
+        st.error("❌ Thiếu GOOGLE_MAPS_API_KEY")
         GOOGLE_MAPS_API_KEY = None
 
     if "GEMINI_API_KEY" in st.secrets:
         GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
         st.success("✅ Gemini API: Đã kết nối")
     else:
-        st.error("❌ Thiếu GEMINI_API_KEY trong secrets.toml")
+        st.error("❌ Thiếu GEMINI_API_KEY")
         GEMINI_API_KEY = None
     
     st.markdown("---")
-    
-    # 2. Nút điều khiển GPS (Mặc định Bật)
-    enable_gps = st.checkbox("📍 Bật định vị GPS", value=True, help="Tự động lấy vị trí hiện tại của bạn để dẫn đường chính xác hơn.")
-    
-    st.info("Chế độ: Dẫn đường Real-time & Giọng nói AI.")
+    enable_gps = st.checkbox("📍 Bật định vị GPS", value=True)
+    st.info("Chế độ: Anti-Flicker (Chống nháy bản đồ).")
 
 # ================= AI CONFIG =================
 if GEMINI_API_KEY:
@@ -59,79 +86,54 @@ if GEMINI_API_KEY:
     ai = genai.GenerativeModel("gemini-2.5-flash-preview-09-2025")
 
 # ================= STATE =================
-if "running" not in st.session_state:
-    st.session_state.running = False
-
-if "last_voice" not in st.session_state:
-    st.session_state.last_voice = ""
-
+if "running" not in st.session_state: st.session_state.running = False
+if "last_voice" not in st.session_state: st.session_state.last_voice = ""
 if "map_origin" not in st.session_state: st.session_state.map_origin = ""
 if "map_dest" not in st.session_state: st.session_state.map_dest = ""
 
-# ================= UI LAYOUT & PLACEHOLDERS =================
+# ================= UI LAYOUT =================
 st.title("BusMate - Dẫn đường thời gian thực")
 
-# [QUAN TRỌNG] Tạo một khung cố định cho âm thanh để tránh chồng chéo
+# Khung chứa âm thanh (Global)
 sound_placeholder = st.empty()
 
 col_control, col_map = st.columns([1, 1.2])
 
 # ================= UTILS =================
 def speak(text):
-    """Phát giọng nói AI vào khung cố định (sound_placeholder)"""
+    """Phát giọng nói vào khung cố định"""
     if HAS_GTTS:
         try:
             import io
             fp = io.BytesIO()
             gTTS(text=text, lang="vi").write_to_fp(fp)
             fp.seek(0)
-            
             with sound_placeholder.container():
                 st.audio(fp, format='audio/mp3', autoplay=True)
-                
-        except Exception as e:
-            st.warning(f"Lỗi âm thanh: {e}")
+        except: pass
 
-def clean_html(t):
-    return re.sub("<[^<]+?>", "", t)
-
-def normalize_direction(text):
-    t = text.lower()
-    if "trái" in t: return "Rẽ trái"
-    if "phải" in t: return "Rẽ phải"
-    return "Đi thẳng"
+def clean_html(t): return re.sub("<[^<]+?>", "", t)
 
 def render_map(origin, destination, api_key):
     if not api_key:
-        return """<div style="padding:20px; border:1px dashed #ccc; text-align:center">⚠️ Cần Google Maps API Key để hiện bản đồ</div>"""
-    
+        return """<div style="padding:20px; border:1px dashed #ccc; text-align:center">⚠️ Cần API Key</div>"""
     if origin and destination:
         src = f"https://www.google.com/maps/embed/v1/directions?key={api_key}&origin={origin}&destination={destination}&mode=transit"
     else:
         src = f"https://www.google.com/maps/embed/v1/view?key={api_key}&center=10.7769,106.7009&zoom=14"
-        
-    return f"""
-    <div style="width:100%; height:600px; border-radius:15px; overflow:hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border: 2px solid #4CAF50;">
-        <iframe width="100%" height="100%" frameborder="0" style="border:0" src="{src}" allowfullscreen></iframe>
-    </div>
-    """
+    return f"""<div style="width:100%; height:600px; border-radius:15px; overflow:hidden; border: 2px solid #007BFF;"><iframe width="100%" height="100%" frameborder="0" style="border:0" src="{src}" allowfullscreen></iframe></div>"""
 
 def ai_parse_input(user_text):
-    prompt = f"""
-    Người dùng khiếm thị nói: "{user_text}"
-    Trích xuất: điểm đi (origin), điểm đến (destination).
-    Nếu người dùng chỉ nói điểm đến (ví dụ "Đến chợ Bến Thành"), hãy để origin là "Current Location".
-    Format trả về: origin=... \n destination=...
-    """
-    try:
-        return ai.generate_content(prompt).text
-    except:
-        return ""
+    prompt = f"""Trích xuất điểm đi(origin), điểm đến(destination) từ: "{user_text}". Nếu chỉ có điểm đến, origin="Current Location". Output: origin=...\\n destination=..."""
+    try: return ai.generate_content(prompt).text
+    except: return ""
 
-# ================= UI IMPLEMENTATION =================
+# ================= PHẦN TĨNH (KHÔNG NHÁY) =================
+# Bản đồ và Ô nhập liệu nằm ngoài Fragment để không bị reload liên tục
 
 with col_map:
     st.markdown("### 🗺️ Bản đồ hỗ trợ")
+    # Bản đồ chỉ render lại khi map_origin/map_dest thực sự thay đổi từ Input
     map_html = render_map(st.session_state.map_origin, st.session_state.map_dest, GOOGLE_MAPS_API_KEY)
     components.html(map_html, height=620)
 
@@ -142,9 +144,23 @@ with col_control:
     c1, c2 = st.columns(2)
     with c1:
         if st.button("▶️ Bắt đầu Dẫn đường", use_container_width=True):
+            # Xử lý Input ngay lập tức để cập nhật Bản đồ (Phần tĩnh)
+            if user_input and GEMINI_API_KEY:
+                ai_res = ai_parse_input(user_input)
+                lines = ai_res.splitlines()
+                o_txt = d_txt = ""
+                for l in lines:
+                    if "origin" in l: o_txt = l.split("=")[1].strip()
+                    if "destination" in l: d_txt = l.split("=")[1].strip()
+                
+                if o_txt and d_txt:
+                    st.session_state.map_origin = o_txt
+                    st.session_state.map_dest = d_txt
+            
             st.session_state.running = True
-            st.session_state.last_voice = "" # Reset giọng nói khi bắt đầu mới
-            st.rerun()
+            st.session_state.last_voice = ""
+            st.rerun() # Refresh toàn trang 1 lần để hiện bản đồ mới
+            
     with c2:
         if st.button("⏹️ Dừng lại", use_container_width=True):
             st.session_state.running = False
@@ -152,126 +168,97 @@ with col_control:
             sound_placeholder.empty()
             st.rerun()
 
-    # ================= MAIN LOGIC =================
+# ================= PHẦN ĐỘNG (FRAGMENT) =================
+# Chỉ vùng này sẽ tự động refresh để cập nhật GPS và Giọng nói
+@fragment
+def tracking_logic():
     if st.session_state.running:
-        st.info("🟢 Đang theo dõi lộ trình & Giọng nói...")
-        
-        if not user_input:
-            speak("Vui lòng nhập điểm đi và đến")
-            st.warning("Vui lòng nhập liệu.")
-            st.stop()
-            
         if not GEMINI_API_KEY or not GOOGLE_MAPS_API_KEY:
-            st.error("Hệ thống chưa được cấu hình API Key trong secrets.")
-            st.stop()
+            st.error("Thiếu API Key.")
+            return
 
-        # 1. AI Parse
-        ai_result = ai_parse_input(user_input)
-        lines = ai_result.splitlines()
-        origin_text = destination_text = ""
-        for l in lines:
-            if "origin" in l: origin_text = l.split("=")[1].strip()
-            if "destination" in l: destination_text = l.split("=")[1].strip()
-
-        # Update Map State
-        if origin_text and destination_text:
-            if origin_text != st.session_state.map_origin or destination_text != st.session_state.map_dest:
-                st.session_state.map_origin = origin_text
-                st.session_state.map_dest = destination_text
-                st.rerun()
-
-        # 2. GPS Check (Có kiểm tra nút enable_gps)
+        # 1. Lấy GPS (Chỉ chạy trong Fragment)
         lat, lng = 10.7769, 106.7009
         has_real_gps = False
         
-        # Chỉ gọi get_geolocation nếu thư viện có sẵn VÀ người dùng bật GPS
         if HAS_GEOLOCATION and enable_gps:
-            loc = get_geolocation()
+            # get_geolocation sẽ trigger rerun, nhưng nhờ @fragment, nó chỉ rerun hàm này
+            loc = get_geolocation() 
             if loc:
                 lat = loc["coords"]["latitude"]
                 lng = loc["coords"]["longitude"]
                 has_real_gps = True
-                st.success(f"📍 GPS: {lat:.4f}, {lng:.4f}")
+                st.success(f"📍 GPS Real-time: {lat:.4f}, {lng:.4f}")
             else:
-                speak("Đang tìm tín hiệu GPS")
                 st.warning("📡 Đang lấy vị trí GPS...")
-                time.sleep(5) 
-                st.rerun()
-        elif not enable_gps:
-            st.warning("⚠️ GPS đã tắt. Sử dụng vị trí nhập tay.")
+                time.sleep(3)
+                st.rerun() # Rerun fragment
+                return
         else:
-            st.warning("⚠️ Trình duyệt không hỗ trợ GPS hoặc thiếu thư viện.")
+            st.warning("⚠️ Đang dùng tọa độ giả lập (GPS Tắt).")
 
-        # 3. Logic Real-time Navigation
+        # 2. Logic API Dẫn đường
         try:
-            # Nếu có GPS thực và được bật -> Dùng GPS làm điểm xuất phát
-            # Nếu không -> Dùng điểm xuất phát người dùng nhập (origin_text)
-            nav_origin = f"{lat},{lng}" if has_real_gps else origin_text
+            # Lấy điểm đến từ state (đã parse ở trên)
+            dest = st.session_state.map_dest
+            if not dest:
+                st.warning("Chưa có điểm đến.")
+                return
+
+            nav_origin = f"{lat},{lng}" if has_real_gps else st.session_state.map_origin
             
             transit_params = {
                 "origin": nav_origin, 
-                "destination": destination_text,
-                "mode": "transit",
-                "transit_mode": "bus",
-                "departure_time": "now",
-                "language": "vi",
+                "destination": dest,
+                "mode": "transit", "transit_mode": "bus",
+                "departure_time": "now", "language": "vi",
                 "key": GOOGLE_MAPS_API_KEY
             }
             
             resp = requests.get("https://maps.googleapis.com/maps/api/directions/json", params=transit_params).json()
-            
-            voice_instruction = ""
+            voice_msg = ""
             
             if resp.get("routes"):
                 legs = resp["routes"][0]["legs"][0]
-                
-                # --- DISPLAY ---
                 duration = legs["duration"]["text"]
-                st.markdown(f"**⏱️ Thời gian còn lại:** {duration}")
+                st.info(f"⏱️ Thời gian: **{duration}**")
                 
-                # --- VOICE LOGIC ---
-                first_step = legs["steps"][0]
-                first_dist = first_step["distance"]["text"]
-                first_instr = clean_html(first_step["html_instructions"])
+                # Phân tích bước đi đầu tiên
+                step0 = legs["steps"][0]
+                dist0 = step0["distance"]["text"]
+                instr0 = clean_html(step0["html_instructions"])
                 
-                if first_step["travel_mode"] == "WALKING":
-                    voice_instruction = f"Đi bộ {first_dist}. {first_instr}."
-                elif first_step["travel_mode"] == "TRANSIT":
-                    bus_line = first_step["transit_details"]["line"]["short_name"]
-                    arr_time = first_step["transit_details"]["departure_time"]["text"]
-                    voice_instruction = f"Đón xe số {bus_line}. Xe đến lúc {arr_time}."
+                if step0["travel_mode"] == "WALKING":
+                    voice_msg = f"Đi bộ {dist0}. {instr0}."
+                elif step0["travel_mode"] == "TRANSIT":
+                    bus = step0["transit_details"]["line"]["short_name"]
+                    arr = step0["transit_details"]["departure_time"]["text"]
+                    voice_msg = f"Xe {bus} sắp đến lúc {arr}."
                 
-                # Hiển thị chi tiết
-                st.markdown("#### 📝 Lộ trình chi tiết:")
-                for step in legs["steps"]:
-                    mode = step["travel_mode"]
-                    dist = step["distance"]["text"]
+                # Hiển thị
+                st.markdown("#### 📝 Chi tiết:")
+                for s in legs["steps"]:
+                    mode = s["travel_mode"]
                     if mode == "WALKING":
-                        instr = clean_html(step["html_instructions"])
-                        st.info(f"🚶 **{dist}:** {instr}")
+                        st.info(f"🚶 {s['distance']['text']}: {clean_html(s['html_instructions'])}")
                     elif mode == "TRANSIT":
-                        td = step["transit_details"]
-                        line = td["line"]["short_name"]
-                        st.success(f"🚌 **Bus {line}:** {td['departure_stop']['name']} ➔ {td['arrival_stop']['name']}")
+                        td = s["transit_details"]
+                        st.success(f"🚌 Bus {td['line']['short_name']}: {td['departure_stop']['name']} ➔ {td['arrival_stop']['name']}")
+            else:
+                st.error("Không tìm thấy đường.")
 
-            elif resp.get("status") == "ZERO_RESULTS":
-                voice_instruction = "Không tìm thấy lộ trình phù hợp."
-                st.error(voice_instruction)
-
-            # --- KÍCH HOẠT GIỌNG NÓI AN TOÀN ---
-            st.toast(f"🗣️ AI: {voice_instruction}")
-
-            if voice_instruction and voice_instruction != st.session_state.last_voice:
-                speak(voice_instruction)
-                st.session_state.last_voice = voice_instruction
-
-            # Refresh mỗi 10s
-            time.sleep(10)
+            # 3. Phát âm thanh
+            if voice_msg and voice_msg != st.session_state.last_voice:
+                speak(voice_msg)
+                st.session_state.last_voice = voice_msg
+            
+            # Tự động cập nhật sau 5s (Chỉ Fragment này refresh)
+            time.sleep(5)
             st.rerun()
             
         except Exception as e:
-            st.error(f"Lỗi API: {e}")
-            st.stop()
+            st.error(f"Lỗi: {e}")
 
-    else:
-        st.info("Sẵn sàng. Nhấn Bắt đầu để dẫn đường.")
+# Gọi Fragment vào cột điều khiển
+with col_control:
+    tracking_logic()
