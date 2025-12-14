@@ -19,8 +19,6 @@ except ImportError:
     HAS_GEOLOCATION = False
 
 # --- Xử lý Fragment (Kỹ thuật chống nháy bản đồ) ---
-# Nếu Streamlit hỗ trợ fragment (bản mới), dùng nó để cô lập vùng cập nhật GPS.
-# Nếu không, dùng hàm giả (fallback) để code vẫn chạy (dù vẫn sẽ nháy).
 try:
     from streamlit import fragment
 except ImportError:
@@ -199,14 +197,26 @@ def tracking_logic():
 
         # 2. Logic API Dẫn đường
         try:
-            # Lấy điểm đến từ state (đã parse ở trên)
+            # Lấy điểm đến từ state
             dest = st.session_state.map_dest
             if not dest:
                 st.warning("Chưa có điểm đến.")
                 return
 
-            nav_origin = f"{lat},{lng}" if has_real_gps else st.session_state.map_origin
-            
+            # --- SỬA LỖI LOGIC ĐIỂM ĐI ---
+            # Ưu tiên điểm đi người dùng nhập (nếu khác "Current Location")
+            user_origin = st.session_state.map_origin
+            is_specific_origin = user_origin and "current location" not in user_origin.lower()
+
+            if is_specific_origin:
+                # Nếu người dùng nhập điểm cụ thể (VD: "Bến Thành"), dùng điểm đó
+                nav_origin = user_origin
+                if has_real_gps:
+                    st.toast(f"ℹ️ Đang dẫn đường từ: {user_origin}")
+            else:
+                # Nếu không nhập (hoặc nhập "Từ đây"), dùng GPS
+                nav_origin = f"{lat},{lng}" if has_real_gps else user_origin
+
             transit_params = {
                 "origin": nav_origin, 
                 "destination": dest,
