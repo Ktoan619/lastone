@@ -154,6 +154,11 @@ with col_control:
     c1, c2 = st.columns(2)
     with c1:
         if st.button("▶️ Bắt đầu Dẫn đường", use_container_width=True):
+            # --- TỰ ĐỘNG KẾT THÚC PHIÊN TRƯỚC ---
+            st.session_state.running = False # Tạm dừng logic chạy ngầm
+            st.session_state.last_voice = "" # Xóa bộ nhớ giọng nói cũ
+            sound_placeholder.empty() # Xóa ngay player âm thanh đang phát
+            
             # Xử lý Input bằng JSON Parser mới
             if user_input and GEMINI_API_KEY:
                 parsed = ai_parse_input(user_input)
@@ -169,8 +174,7 @@ with col_control:
                         # Nếu không -> Gán cờ đặc biệt để dùng GPS
                         st.session_state.map_origin = "Current Location"
             
-            st.session_state.running = True
-            st.session_state.last_voice = ""
+            st.session_state.running = True # Kích hoạt phiên mới
             st.rerun() # Refresh toàn trang 1 lần để hiện bản đồ mới
             
     with c2:
