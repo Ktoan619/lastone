@@ -3,6 +3,7 @@ import requests
 import time
 import re
 import uuid
+import json  # Thêm thư viện JSON
 import streamlit.components.v1 as components
 
 # --- Xử lý thư viện ---
@@ -122,9 +123,20 @@ def render_map(origin, destination, api_key):
     return f"""<div style="width:100%; height:600px; border-radius:15px; overflow:hidden; border: 2px solid #007BFF;"><iframe width="100%" height="100%" frameborder="0" style="border:0" src="{src}" allowfullscreen></iframe></div>"""
 
 def ai_parse_input(user_text):
-    prompt = f"""Trích xuất điểm đi(origin), điểm đến(destination) từ: "{user_text}". Nếu chỉ có điểm đến, origin="Current Location". Output: origin=...\\n destination=..."""
-    try: return ai.generate_content(prompt).text
-    except: return ""
+    # Dùng JSON để đảm bảo chính xác tuyệt đối
+    prompt = f"""
+    Phân tích yêu cầu tìm đường: "{user_text}"
+    Trả về JSON với 2 trường:
+    - origin: Tên địa điểm đi (Nếu người dùng không nói rõ hoặc nói "tại đây", "vị trí của tôi", hãy để null).
+    - destination: Tên địa điểm đến.
+    Ví dụ: {{"origin": "Chợ Bến Thành", "destination": "Suối Tiên"}}
+    """
+    try:
+        res = ai.generate_content(prompt).text
+        json_str = res.replace("```json", "").replace("```", "").strip()
+        return json.loads(json_str)
+    except:
+        return {}
 
 # ================= PHẦN TĨNH (KHÔNG NHÁY) =================
 # Bản đồ và Ô nhập liệu nằm ngoài Fragment để không bị reload liên tục
@@ -142,18 +154,20 @@ with col_control:
     c1, c2 = st.columns(2)
     with c1:
         if st.button("▶️ Bắt đầu Dẫn đường", use_container_width=True):
-            # Xử lý Input ngay lập tức để cập nhật Bản đồ (Phần tĩnh)
+            # Xử lý Input bằng JSON Parser mới
             if user_input and GEMINI_API_KEY:
-                ai_res = ai_parse_input(user_input)
-                lines = ai_res.splitlines()
-                o_txt = d_txt = ""
-                for l in lines:
-                    if "origin" in l: o_txt = l.split("=")[1].strip()
-                    if "destination" in l: d_txt = l.split("=")[1].strip()
+                parsed = ai_parse_input(user_input)
+                origin_found = parsed.get("origin")
+                dest_found = parsed.get("destination")
                 
-                if o_txt and d_txt:
-                    st.session_state.map_origin = o_txt
-                    st.session_state.map_dest = d_txt
+                if dest_found:
+                    st.session_state.map_dest = dest_found
+                    # Nếu tìm thấy điểm đi cụ thể -> Gán vào state
+                    if origin_found:
+                        st.session_state.map_origin = origin_found
+                    else:
+                        # Nếu không -> Gán cờ đặc biệt để dùng GPS
+                        st.session_state.map_origin = "Current Location"
             
             st.session_state.running = True
             st.session_state.last_voice = ""
@@ -180,42 +194,43 @@ def tracking_logic():
         has_real_gps = False
         
         if HAS_GEOLOCATION and enable_gps:
-            # get_geolocation sẽ trigger rerun, nhưng nhờ @fragment, nó chỉ rerun hàm này
             loc = get_geolocation() 
             if loc:
                 lat = loc["coords"]["latitude"]
                 lng = loc["coords"]["longitude"]
                 has_real_gps = True
-                st.success(f"📍 GPS Real-time: {lat:.4f}, {lng:.4f}")
+                # st.success(f"📍 GPS Real-time: {lat:.4f}, {lng:.4f}") # Ẩn bớt cho gọn
             else:
                 st.warning("📡 Đang lấy vị trí GPS...")
                 time.sleep(3)
                 st.rerun() # Rerun fragment
                 return
         else:
-            st.warning("⚠️ Đang dùng tọa độ giả lập (GPS Tắt).")
+            if st.session_state.map_origin == "Current Location":
+                st.warning("⚠️ Đang dùng tọa độ giả lập (GPS Tắt).")
 
         # 2. Logic API Dẫn đường
         try:
-            # Lấy điểm đến từ state
             dest = st.session_state.map_dest
+            user_origin = st.session_state.map_origin
+            
             if not dest:
                 st.warning("Chưa có điểm đến.")
                 return
 
             # --- SỬA LỖI LOGIC ĐIỂM ĐI ---
-            # Ưu tiên điểm đi người dùng nhập (nếu khác "Current Location")
-            user_origin = st.session_state.map_origin
-            is_specific_origin = user_origin and "current location" not in user_origin.lower()
+            # Xác định xem có phải chế độ GPS không
+            is_gps_mode = not user_origin or any(x in str(user_origin).lower() for x in ["current location", "vị trí hiện tại", "tại đây"])
 
-            if is_specific_origin:
-                # Nếu người dùng nhập điểm cụ thể (VD: "Bến Thành"), dùng điểm đó
-                nav_origin = user_origin
+            if is_gps_mode:
                 if has_real_gps:
-                    st.toast(f"ℹ️ Đang dẫn đường từ: {user_origin}")
+                    nav_origin = f"{lat},{lng}"
+                    st.toast("📍 Đang dẫn đường từ vị trí GPS hiện tại.")
+                else:
+                    nav_origin = "Hồ Chí Minh" # Fallback
             else:
-                # Nếu không nhập (hoặc nhập "Từ đây"), dùng GPS
-                nav_origin = f"{lat},{lng}" if has_real_gps else user_origin
+                nav_origin = user_origin
+                st.toast(f"ℹ️ Đang dẫn đường từ: {user_origin}")
 
             transit_params = {
                 "origin": nav_origin, 
