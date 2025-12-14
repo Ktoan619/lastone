@@ -11,7 +11,6 @@ import os
 try:
     from data_and_prompts import get_full_system_instruction, BUS_DATA
 except ImportError:
-    # Fallback an toàn nếu thiếu file
     def get_full_system_instruction(): return "Bạn là trợ lý xe buýt thông minh."
     BUS_DATA = []
 
@@ -43,53 +42,64 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- CSS TÙY CHỈNH (FIX LỖI HIỂN THỊ TAB) ---
+# --- CSS TÙY CHỈNH (ĐƠN GIẢN HÓA ĐỂ HIỆN TAB) ---
 st.markdown("""
 <style>
-    /* Nền trắng sạch */
+    /* 1. Nền trắng sạch cho toàn bộ App */
     .stApp { background-color: #FFFFFF; }
     
-    /* Chỉnh màu chữ toàn bộ thành đen để dễ đọc */
-    h1, h2, h3, h4, h5, h6, p, li, span, div, label { color: #212529 !important; }
+    /* 2. Màu chữ Đen để dễ đọc trên nền trắng */
+    h1, h2, h3, h4, h5, h6, p, li, span, div, label { 
+        color: #212529 !important; 
+    }
     
-    /* Style cho Nút bấm */
+    /* 3. Style Nút bấm (Xanh dương) */
     .stButton > button {
-        background-color: #007BFF !important; color: white !important;
-        font-weight: bold; border-radius: 8px; border: none;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: all 0.2s;
+        background-color: #007BFF !important; 
+        color: white !important;
+        font-weight: bold; 
+        border-radius: 8px; 
+        border: none;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     .stButton > button:hover {
-        background-color: #0056b3 !important; transform: translateY(-1px);
+        background-color: #0056b3 !important; 
     }
     
-    /* Style cho Input */
+    /* 4. Style Ô nhập liệu (Viền xanh) */
     .stTextInput > div > div > input {
-        color: #000000; background-color: #F8F9FA;
-        border: 2px solid #007BFF; border-radius: 8px;
-    }
-    
-    /* Sidebar */
-    [data-testid="stSidebar"] { background-color: #F1F3F5; border-right: 1px solid #DEE2E6; }
-    
-    /* === FIX LỖI TAB (Làm Tab nổi bật hơn) === */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 10px;
-        margin-bottom: 20px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        padding: 10px 20px;
-        background-color: #E9ECEF; /* Màu xám nhạt cho tab chưa chọn */
+        color: #000000; 
+        background-color: #F8F9FA;
+        border: 2px solid #007BFF; 
         border-radius: 8px;
-        color: #495057 !important; /* Màu chữ xám đậm */
-        font-weight: 600;
-        border: 1px solid #DEE2E6;
-    }
-    .stTabs [aria-selected="true"] {
-        background-color: #007BFF !important; /* Màu xanh cho tab đang chọn */
-        color: #FFFFFF !important; /* Chữ trắng */
-        border-color: #007BFF;
     }
     
+    /* 5. Sidebar (Xám nhạt) */
+    [data-testid="stSidebar"] { 
+        background-color: #F1F3F5; 
+        border-right: 1px solid #DEE2E6; 
+    }
+    
+    /* 6. FIX LỖI TAB (Quan trọng: Đưa về mặc định nhưng ép màu chữ) */
+    /* Màu chữ tiêu đề Tab */
+    .stTabs button[data-baseweb="tab"] div p {
+        font-size: 18px !important;
+        font-weight: bold !important;
+        color: #007BFF !important; /* Chữ xanh cho dễ thấy */
+    }
+    
+    /* Thanh gạch chân dưới Tab đang chọn */
+    .stTabs [data-baseweb="tab-highlight"] {
+        background-color: #007BFF !important;
+        height: 3px;
+    }
+    
+    /* Đường kẻ mờ ngăn cách tab */
+    .stTabs [data-baseweb="tab-list"] {
+        border-bottom: 2px solid #DEE2E6;
+        padding-bottom: 5px;
+    }
+
     h1 { color: #007BFF !important; }
 </style>
 """, unsafe_allow_html=True)
@@ -113,14 +123,13 @@ with st.sidebar:
     
     st.markdown("---")
     enable_gps = st.checkbox("📍 Bật định vị GPS", value=True)
-    st.info("💡 Mẹo: Chuyển tab phía trên để dùng Chatbot.")
+    st.info("💡 Mẹo: Chọn Tab bên phải màn hình để Chatbot.")
 
 # ================= AI CONFIG =================
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
     ai = genai.GenerativeModel("gemini-2.5-flash-preview-09-2025")
     
-    # Bot Chat (Tab 2)
     bot_instruction = get_full_system_instruction()
     ai_chatbot = genai.GenerativeModel("gemini-2.5-flash-preview-09-2025", system_instruction=bot_instruction)
 
@@ -176,8 +185,9 @@ st.title("BusMate - Bạn đồng hành xe bus")
 # Khung âm thanh (Global)
 sound_placeholder = st.empty()
 
-# --- TẠO TAB (Đặt ngay dưới title) ---
-tab_nav, tab_chat = st.tabs(["🧭 Dẫn đường Real-time", "💬 Hỏi đáp Bot"])
+# --- TẠO TAB ---
+# Sử dụng emoji lớn và tên rõ ràng để dễ thấy
+tab_nav, tab_chat = st.tabs(["🧭 DẪN ĐƯỜNG REAL-TIME", "💬 HỎI ĐÁP BOT"])
 
 # ================= TAB 1: DẪN ĐƯỜNG =================
 with tab_nav:
