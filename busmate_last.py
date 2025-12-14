@@ -3,8 +3,17 @@ import requests
 import time
 import re
 import uuid
-import json  # Thêm thư viện JSON
+import json
 import streamlit.components.v1 as components
+import os
+
+# --- IMPORT DỮ LIỆU VÀ PROMPT TỪ FILE MỚI ---
+try:
+    from data_and_prompts import get_full_system_instruction, BUS_DATA
+except ImportError:
+    # Fallback nếu file chưa tồn tại (để tránh lỗi crash ban đầu)
+    def get_full_system_instruction(): return "Bạn là trợ lý xe buýt."
+    BUS_DATA = []
 
 # --- Xử lý thư viện ---
 try:
@@ -19,7 +28,6 @@ try:
 except ImportError:
     HAS_GEOLOCATION = False
 
-# --- Xử lý Fragment (Kỹ thuật chống nháy bản đồ) ---
 try:
     from streamlit import fragment
 except ImportError:
@@ -55,6 +63,24 @@ st.markdown("""
     [data-testid="stSidebar"] { background-color: #F8F9FA; border-right: 1px solid #007BFF; }
     .stAlert { border-radius: 8px; border: 1px solid rgba(0,0,0,0.1); }
     h1 { color: #007BFF !important; }
+    
+    /* CSS cho Tab */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 10px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        white-space: pre-wrap;
+        background-color: #F0F8FF;
+        border-radius: 10px 10px 0px 0px;
+        gap: 1px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #007BFF;
+        color: white !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -77,26 +103,27 @@ with st.sidebar:
     
     st.markdown("---")
     enable_gps = st.checkbox("📍 Bật định vị GPS", value=True)
-    st.info("Chế độ: Anti-Flicker (Chống nháy bản đồ).")
+    st.info("Chế độ: Dẫn đường & Chatbot thông minh.")
 
 # ================= AI CONFIG =================
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
+    # Model cho tác vụ dẫn đường (Logic đơn giản)
     ai = genai.GenerativeModel("gemini-2.5-flash-preview-09-2025")
+    
+    # Model cho Chatbot (Dùng System Prompt từ file data mới)
+    bot_instruction = get_full_system_instruction()
+    ai_chatbot = genai.GenerativeModel("gemini-2.5-flash-preview-09-2025", system_instruction=bot_instruction)
 
 # ================= STATE =================
 if "running" not in st.session_state: st.session_state.running = False
 if "last_voice" not in st.session_state: st.session_state.last_voice = ""
 if "map_origin" not in st.session_state: st.session_state.map_origin = ""
 if "map_dest" not in st.session_state: st.session_state.map_dest = ""
-
-# ================= UI LAYOUT =================
-st.title("BusMate - Dẫn đường thời gian thực")
-
-# Khung chứa âm thanh (Global)
-sound_placeholder = st.empty()
-
-col_control, col_map = st.columns([1, 1.2])
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = [
+        {"role": "assistant", "content": "Xin chào! Tôi là Trợ lý Giao thông Xanh VnBus. Bạn cần tìm tuyến xe nào? (Ví dụ: 'Xe 152 đi đâu?', 'Vé xe 19 bao nhiêu?')"}
+    ]
 
 # ================= UTILS =================
 def speak(text):
@@ -123,7 +150,6 @@ def render_map(origin, destination, api_key):
     return f"""<div style="width:100%; height:600px; border-radius:15px; overflow:hidden; border: 2px solid #007BFF;"><iframe width="100%" height="100%" frameborder="0" style="border:0" src="{src}" allowfullscreen></iframe></div>"""
 
 def ai_parse_input(user_text):
-    # Dùng JSON để đảm bảo chính xác tuyệt đối
     prompt = f"""
     Phân tích yêu cầu tìm đường: "{user_text}"
     Trả về JSON với 2 trường:
@@ -138,156 +164,212 @@ def ai_parse_input(user_text):
     except:
         return {}
 
-# ================= PHẦN TĨNH (KHÔNG NHÁY) =================
-# Bản đồ và Ô nhập liệu nằm ngoài Fragment để không bị reload liên tục
+# ================= UI LAYOUT CHÍNH =================
+st.title("BusMate - Bạn đồng hành xe bus")
 
-with col_map:
-    st.markdown("### 🗺️ Bản đồ hỗ trợ")
-    # Bản đồ chỉ render lại khi map_origin/map_dest thực sự thay đổi từ Input
-    map_html = render_map(st.session_state.map_origin, st.session_state.map_dest, GOOGLE_MAPS_API_KEY)
-    components.html(map_html, height=620)
+# Khung chứa âm thanh (Global)
+sound_placeholder = st.empty()
 
-with col_control:
-    st.markdown("### 🎙️ Nhập lệnh")
-    user_input = st.text_input("Nhập lộ trình:", placeholder="Ví dụ: Bến Thành đi Suối Tiên...")
+# TẠO TABS
+tab_nav, tab_chat = st.tabs(["🧭 Dẫn đường Real-time", "💬 Hỏi đáp Bot"])
 
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("▶️ Bắt đầu Dẫn đường", use_container_width=True):
-            # --- TỰ ĐỘNG KẾT THÚC PHIÊN TRƯỚC ---
-            st.session_state.running = False # Tạm dừng logic chạy ngầm
-            st.session_state.last_voice = "" # Xóa bộ nhớ giọng nói cũ
-            sound_placeholder.empty() # Xóa ngay player âm thanh đang phát
-            
-            # Xử lý Input bằng JSON Parser mới
-            if user_input and GEMINI_API_KEY:
-                parsed = ai_parse_input(user_input)
-                origin_found = parsed.get("origin")
-                dest_found = parsed.get("destination")
+# ================= TAB 1: DẪN ĐƯỜNG =================
+with tab_nav:
+    col_control, col_map = st.columns([1, 1.2])
+
+    with col_map:
+        st.markdown("### 🗺️ Bản đồ hỗ trợ")
+        map_html = render_map(st.session_state.map_origin, st.session_state.map_dest, GOOGLE_MAPS_API_KEY)
+        components.html(map_html, height=620)
+
+    with col_control:
+        st.markdown("### 🎙️ Nhập lệnh")
+        user_input = st.text_input("Nhập lộ trình:", placeholder="Ví dụ: Bến Thành đi Suối Tiên...")
+
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("▶️ Bắt đầu Dẫn đường", use_container_width=True):
+                st.session_state.running = False 
+                st.session_state.last_voice = "" 
+                sound_placeholder.empty()
                 
-                if dest_found:
-                    st.session_state.map_dest = dest_found
-                    # Nếu tìm thấy điểm đi cụ thể -> Gán vào state
-                    if origin_found:
-                        st.session_state.map_origin = origin_found
-                    else:
-                        # Nếu không -> Gán cờ đặc biệt để dùng GPS
-                        st.session_state.map_origin = "Current Location"
-            
-            st.session_state.running = True # Kích hoạt phiên mới
-            st.rerun() # Refresh toàn trang 1 lần để hiện bản đồ mới
-            
-    with c2:
-        if st.button("⏹️ Dừng lại", use_container_width=True):
-            st.session_state.running = False
-            st.session_state.last_voice = ""
-            sound_placeholder.empty()
-            st.rerun()
+                if user_input and GEMINI_API_KEY:
+                    parsed = ai_parse_input(user_input)
+                    origin_found = parsed.get("origin")
+                    dest_found = parsed.get("destination")
+                    
+                    if dest_found:
+                        st.session_state.map_dest = dest_found
+                        if origin_found:
+                            st.session_state.map_origin = origin_found
+                        else:
+                            st.session_state.map_origin = "Current Location"
+                
+                st.session_state.running = True
+                st.rerun()
+                
+        with c2:
+            if st.button("⏹️ Dừng lại", use_container_width=True):
+                st.session_state.running = False
+                st.session_state.last_voice = ""
+                sound_placeholder.empty()
+                st.rerun()
 
-# ================= PHẦN ĐỘNG (FRAGMENT) =================
-# Chỉ vùng này sẽ tự động refresh để cập nhật GPS và Giọng nói
-@fragment
-def tracking_logic():
-    if st.session_state.running:
-        if not GEMINI_API_KEY or not GOOGLE_MAPS_API_KEY:
-            st.error("Thiếu API Key.")
-            return
-
-        # 1. Lấy GPS (Chỉ chạy trong Fragment)
-        lat, lng = 10.7769, 106.7009
-        has_real_gps = False
-        
-        if HAS_GEOLOCATION and enable_gps:
-            loc = get_geolocation() 
-            if loc:
-                lat = loc["coords"]["latitude"]
-                lng = loc["coords"]["longitude"]
-                has_real_gps = True
-                # st.success(f"📍 GPS Real-time: {lat:.4f}, {lng:.4f}") # Ẩn bớt cho gọn
-            else:
-                st.warning("📡 Đang lấy vị trí GPS...")
-                time.sleep(3)
-                st.rerun() # Rerun fragment
-                return
-        else:
-            if st.session_state.map_origin == "Current Location":
-                st.warning("⚠️ Đang dùng tọa độ giả lập (GPS Tắt).")
-
-        # 2. Logic API Dẫn đường
-        try:
-            dest = st.session_state.map_dest
-            user_origin = st.session_state.map_origin
-            
-            if not dest:
-                st.warning("Chưa có điểm đến.")
+    # --- TRACKING LOGIC (FRAGMENT) ---
+    @fragment
+    def tracking_logic():
+        if st.session_state.running:
+            if not GEMINI_API_KEY or not GOOGLE_MAPS_API_KEY:
+                st.error("Thiếu API Key.")
                 return
 
-            # --- SỬA LỖI LOGIC ĐIỂM ĐI ---
-            # Xác định xem có phải chế độ GPS không
-            is_gps_mode = not user_origin or any(x in str(user_origin).lower() for x in ["current location", "vị trí hiện tại", "tại đây"])
-
-            if is_gps_mode:
-                if has_real_gps:
-                    nav_origin = f"{lat},{lng}"
-                    st.toast("📍 Đang dẫn đường từ vị trí GPS hiện tại.")
+            # Lấy GPS
+            lat, lng = 10.7769, 106.7009
+            has_real_gps = False
+            
+            if HAS_GEOLOCATION and enable_gps:
+                loc = get_geolocation() 
+                if loc:
+                    lat = loc["coords"]["latitude"]
+                    lng = loc["coords"]["longitude"]
+                    has_real_gps = True
                 else:
-                    nav_origin = "Hồ Chí Minh" # Fallback
+                    st.warning("📡 Đang lấy vị trí GPS...")
+                    time.sleep(3)
+                    st.rerun()
+                    return
             else:
-                nav_origin = user_origin
-                st.toast(f"ℹ️ Đang dẫn đường từ: {user_origin}")
+                if st.session_state.map_origin == "Current Location":
+                    st.warning("⚠️ Đang dùng tọa độ giả lập (GPS Tắt).")
 
-            transit_params = {
-                "origin": nav_origin, 
-                "destination": dest,
-                "mode": "transit", "transit_mode": "bus",
-                "departure_time": "now", "language": "vi",
-                "key": GOOGLE_MAPS_API_KEY
-            }
-            
-            resp = requests.get("https://maps.googleapis.com/maps/api/directions/json", params=transit_params).json()
-            voice_msg = ""
-            
-            if resp.get("routes"):
-                legs = resp["routes"][0]["legs"][0]
-                duration = legs["duration"]["text"]
-                st.info(f"⏱️ Thời gian: **{duration}**")
+            try:
+                dest = st.session_state.map_dest
+                user_origin = st.session_state.map_origin
                 
-                # Phân tích bước đi đầu tiên
-                step0 = legs["steps"][0]
-                dist0 = step0["distance"]["text"]
-                instr0 = clean_html(step0["html_instructions"])
-                
-                if step0["travel_mode"] == "WALKING":
-                    voice_msg = f"Đi bộ {dist0}. {instr0}."
-                elif step0["travel_mode"] == "TRANSIT":
-                    bus = step0["transit_details"]["line"]["short_name"]
-                    arr = step0["transit_details"]["departure_time"]["text"]
-                    voice_msg = f"Xe {bus} sắp đến lúc {arr}."
-                
-                # Hiển thị
-                st.markdown("#### 📝 Chi tiết:")
-                for s in legs["steps"]:
-                    mode = s["travel_mode"]
-                    if mode == "WALKING":
-                        st.info(f"🚶 {s['distance']['text']}: {clean_html(s['html_instructions'])}")
-                    elif mode == "TRANSIT":
-                        td = s["transit_details"]
-                        st.success(f"🚌 Bus {td['line']['short_name']}: {td['departure_stop']['name']} ➔ {td['arrival_stop']['name']}")
-            else:
-                st.error("Không tìm thấy đường.")
+                if not dest:
+                    st.warning("Chưa có điểm đến.")
+                    return
 
-            # 3. Phát âm thanh
-            if voice_msg and voice_msg != st.session_state.last_voice:
-                speak(voice_msg)
-                st.session_state.last_voice = voice_msg
-            
-            # Tự động cập nhật sau 5s (Chỉ Fragment này refresh)
-            time.sleep(5)
-            st.rerun()
-            
-        except Exception as e:
-            st.error(f"Lỗi: {e}")
+                # Logic chọn điểm xuất phát (Ưu tiên Input tay > GPS)
+                is_gps_mode = not user_origin or any(x in str(user_origin).lower() for x in ["current location", "vị trí hiện tại", "tại đây"])
 
-# Gọi Fragment vào cột điều khiển
-with col_control:
-    tracking_logic()
+                if is_gps_mode:
+                    if has_real_gps:
+                        nav_origin = f"{lat},{lng}"
+                        st.toast("📍 Đang dẫn đường từ vị trí GPS hiện tại.")
+                    else:
+                        nav_origin = "Hồ Chí Minh"
+                else:
+                    nav_origin = user_origin
+                    st.toast(f"ℹ️ Đang dẫn đường từ: {user_origin}")
+
+                # Gọi Google Directions API
+                transit_params = {
+                    "origin": nav_origin, 
+                    "destination": dest,
+                    "mode": "transit", "transit_mode": "bus",
+                    "departure_time": "now", "language": "vi",
+                    "key": GOOGLE_MAPS_API_KEY
+                }
+                
+                resp = requests.get("https://maps.googleapis.com/maps/api/directions/json", params=transit_params).json()
+                voice_msg = ""
+                
+                if resp.get("routes"):
+                    legs = resp["routes"][0]["legs"][0]
+                    duration = legs["duration"]["text"]
+                    st.info(f"⏱️ Thời gian: **{duration}**")
+                    
+                    # Phân tích bước đầu tiên để đọc giọng nói
+                    step0 = legs["steps"][0]
+                    dist0 = step0["distance"]["text"]
+                    instr0 = clean_html(step0["html_instructions"])
+                    
+                    if step0["travel_mode"] == "WALKING":
+                        voice_msg = f"Đi bộ {dist0}. {instr0}."
+                    elif step0["travel_mode"] == "TRANSIT":
+                        bus = step0["transit_details"]["line"]["short_name"]
+                        arr = step0["transit_details"]["departure_time"]["text"]
+                        voice_msg = f"Xe {bus} sắp đến lúc {arr}."
+                    
+                    # Hiển thị chi tiết
+                    st.markdown("#### 📝 Chi tiết:")
+                    for s in legs["steps"]:
+                        mode = s["travel_mode"]
+                        if mode == "WALKING":
+                            st.info(f"🚶 {s['distance']['text']}: {clean_html(s['html_instructions'])}")
+                        elif mode == "TRANSIT":
+                            td = s["transit_details"]
+                            st.success(f"🚌 Bus {td['line']['short_name']}: {td['departure_stop']['name']} ➔ {td['arrival_stop']['name']}")
+                else:
+                    st.error("Không tìm thấy đường.")
+
+                # Phát giọng nói
+                if voice_msg and voice_msg != st.session_state.last_voice:
+                    speak(voice_msg)
+                    st.session_state.last_voice = voice_msg
+                
+                time.sleep(5)
+                st.rerun()
+                
+            except Exception as e:
+                st.error(f"Lỗi: {e}")
+
+    with col_control:
+        tracking_logic()
+
+# ================= TAB 2: BOT CHAT HỎI ĐÁP =================
+with tab_chat:
+    st.markdown("### 🤖 Trợ lý ảo thông minh")
+    st.caption("Chuyên gia xe buýt TP.HCM - Hỏi là đáp!")
+    
+    # Hiển thị lịch sử chat
+    for msg in st.session_state.chat_history:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+            
+    # Xử lý input chat
+    if prompt := st.chat_input("Hỏi tôi về xe buýt (VD: Giá vé xe 19? Xe nào đi Suối Tiên?)"):
+        # Lưu tin nhắn user
+        st.session_state.chat_history.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+            
+        # Logic Bot trả lời
+        with st.chat_message("assistant"):
+            with st.spinner("Bot đang tra cứu dữ liệu..."):
+                try:
+                    # Gọi Gemini Chatbot (đã cấu hình system_instruction từ file data)
+                    if GEMINI_API_KEY:
+                        chat = ai_chatbot.start_chat(history=[])
+                        response = chat.send_message(prompt)
+                        bot_reply = response.text
+                        
+                        # --- LIÊN KẾT THÔNG MINH (SMART LINKING) ---
+                        # Nếu Bot trả về lệnh MAP_CMD, tự động cập nhật bản đồ ở Tab 1
+                        if "MAP_CMD:" in bot_reply:
+                            try:
+                                # Lấy dòng chứa lệnh
+                                cmd_line = [line for line in bot_reply.splitlines() if "MAP_CMD:" in line][0]
+                                parts = cmd_line.replace("MAP_CMD:", "").split("|")
+                                if len(parts) == 2:
+                                    origin_cmd = parts[0].strip()
+                                    dest_cmd = parts[1].strip()
+                                    
+                                    # Cập nhật state bản đồ
+                                    st.session_state.map_origin = origin_cmd
+                                    st.session_state.map_dest = dest_cmd
+                                    st.toast(f"🗺️ Đã cập nhật bản đồ: {origin_cmd} ➔ {dest_cmd}. Hãy chuyển sang Tab Dẫn đường!")
+                            except: pass
+                            
+                            # Xóa lệnh khỏi nội dung hiển thị
+                            bot_reply = re.sub(r"MAP_CMD:.*", "", bot_reply).strip()
+
+                    else:
+                        bot_reply = "Xin lỗi, tôi chưa được kết nối với bộ não (Thiếu API Key)."
+
+                    st.markdown(bot_reply)
+                    st.session_state.chat_history.append({"role": "assistant", "content": bot_reply})
+                    
+                except Exception as e:
+                    st.error(f"Lỗi Bot: {e}")
