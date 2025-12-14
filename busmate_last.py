@@ -27,6 +27,61 @@ st.set_page_config(
     layout="wide"
 )
 
+# --- CSS TÙY CHỈNH: TRẮNG - XANH - ĐEN ---
+st.markdown("""
+<style>
+    /* 1. Nền ứng dụng màu Trắng */
+    .stApp {
+        background-color: #FFFFFF;
+    }
+    
+    /* 2. Chữ màu Đen toàn bộ */
+    h1, h2, h3, h4, h5, h6, p, li, span, div, label {
+        color: #000000 !important;
+    }
+    
+    /* 3. Nút bấm màu Xanh Dương */
+    .stButton > button {
+        background-color: #007BFF !important; /* Xanh dương đậm */
+        color: white !important;
+        font-weight: bold;
+        border-radius: 10px;
+        border: none;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        transition: all 0.3s;
+    }
+    .stButton > button:hover {
+        background-color: #0056b3 !important; /* Xanh đậm hơn khi di chuột */
+        transform: translateY(-2px);
+    }
+
+    /* 4. Ô nhập liệu (Input) */
+    .stTextInput > div > div > input {
+        color: #000000;
+        background-color: #F0F8FF; /* Xanh nhạt rất nhẹ */
+        border: 2px solid #007BFF;
+        border-radius: 8px;
+    }
+    
+    /* 5. Thanh bên (Sidebar) */
+    [data-testid="stSidebar"] {
+        background-color: #F8F9FA; /* Xám trắng nhẹ */
+        border-right: 1px solid #007BFF;
+    }
+    
+    /* 6. Các hộp thông báo (Info, Success, Warning) */
+    .stAlert {
+        border-radius: 8px;
+        border: 1px solid rgba(0,0,0,0.1);
+    }
+    
+    /* Tiêu đề ứng dụng màu xanh cho nổi bật */
+    h1 {
+        color: #007BFF !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # ================= SIDEBAR CONFIG =================
 with st.sidebar:
     st.header("Cấu hình hệ thống")
@@ -111,7 +166,7 @@ def render_map(origin, destination, api_key):
         src = f"https://www.google.com/maps/embed/v1/view?key={api_key}&center=10.7769,106.7009&zoom=14"
         
     return f"""
-    <div style="width:100%; height:600px; border-radius:15px; overflow:hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border: 2px solid #4CAF50;">
+    <div style="width:100%; height:600px; border-radius:15px; overflow:hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border: 2px solid #007BFF;">
         <iframe width="100%" height="100%" frameborder="0" style="border:0" src="{src}" allowfullscreen></iframe>
     </div>
     """
