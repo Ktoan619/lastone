@@ -183,40 +183,50 @@ with col_control:
                 st.session_state.map_dest = destination
                 st.rerun() # Refresh để cập nhật bản đồ ngay lập tức
 
-        # ===== GPS =====
+        # ===== GPS (SỬA ĐỔI: LINH HOẠT HƠN) =====
+        lat, lng = 10.7769, 106.7009 # Tọa độ mặc định (HCM) để tránh lỗi biến
+        has_real_gps = False # Cờ đánh dấu có GPS thực hay không
+
         if HAS_GEOLOCATION:
             loc = get_geolocation()
-            if loc is None:
+            if loc:
+                lat = loc["coords"]["latitude"]
+                lng = loc["coords"]["longitude"]
+                has_real_gps = True
+            elif not (origin and destination):
+                # Chỉ bắt buộc chờ GPS nếu KHÔNG CÓ đủ điểm đi/đến (Người dùng cần định vị)
                 speak("Đang xác định vị trí của bạn")
-                st.warning("Đang chờ tín hiệu GPS...")
+                st.warning("📡 Đang chờ tín hiệu GPS để xác định điểm xuất phát...")
                 st.stop()
-            
-            lat = loc["coords"]["latitude"]
-            lng = loc["coords"]["longitude"]
+            else:
+                # Có đủ điểm đi & đến -> Chấp nhận chạy tiếp (Tra cứu A -> B)
+                st.info("ℹ️ Đang tra cứu lộ trình nhập tay (Bỏ qua GPS).")
         else:
-            # Fallback nếu không có thư viện GPS (Test mode)
-            lat, lng = 10.7769, 106.7009
+            # Fallback nếu không có thư viện GPS
             st.warning("⚠️ Module GPS không khả dụng. Dùng tọa độ giả lập.")
 
         # ===== WALK TO STOP (Google Directions API) =====
         try:
-            walk_params = {
-                "origin": f"{lat},{lng}",
-                "destination": origin,
-                "mode": "walking",
-                "language": "vi",
-                "key": GOOGLE_MAPS_API_KEY
-            }
+            direction = "Di chuyển đến điểm xuất phát" # Mặc định
 
-            walk = requests.get(
-                "https://maps.googleapis.com/maps/api/directions/json",
-                params=walk_params
-            ).json()
+            # Chỉ gọi API chỉ đường đi bộ nếu có GPS thực sự
+            if has_real_gps:
+                walk_params = {
+                    "origin": f"{lat},{lng}",
+                    "destination": origin,
+                    "mode": "walking",
+                    "language": "vi",
+                    "key": GOOGLE_MAPS_API_KEY
+                }
 
-            direction = "Đi thẳng"
-            if walk.get("routes"):
-                step = clean_html(walk["routes"][0]["legs"][0]["steps"][0]["html_instructions"])
-                direction = normalize_direction(step)
+                walk = requests.get(
+                    "https://maps.googleapis.com/maps/api/directions/json",
+                    params=walk_params
+                ).json()
+
+                if walk.get("routes"):
+                    step = clean_html(walk["routes"][0]["legs"][0]["steps"][0]["html_instructions"])
+                    direction = normalize_direction(step)
             
             # ===== BUS ETA (Google Directions API) =====
             transit_params = {
@@ -234,27 +244,71 @@ with col_control:
                 params=transit_params
             ).json()
 
-            bus_info = "Đang chờ xe bus"
+            # --- SỬA ĐỔI: PHÂN TÍCH CHI TIẾT LỘ TRÌNH (Đón ở đâu, đi bộ đâu) ---
+            route_steps = [] # Danh sách chứa các bước di chuyển
+            voice_summary = "" # Nội dung tóm tắt để AI nói
+
             if transit.get("routes"):
-                for s in transit["routes"][0]["legs"][0]["steps"]:
-                    if s["travel_mode"] == "TRANSIT":
-                        td = s["transit_details"]
-                        line = td["line"].get("short_name", "")
-                        time_txt = td["departure_time"]["text"]
-                        bus_info = f"Xe số {line} sẽ đến lúc {time_txt}"
-                        break
+                legs = transit["routes"][0]["legs"][0]
+                
+                # 1. Hiển thị tổng quan
+                duration = legs["duration"]["text"]
+                arrival = legs.get("arrival_time", {}).get("text", "N/A")
+                st.markdown(f"⏱️ **Tổng thời gian:** {duration} (Dự kiến đến: {arrival})")
+                
+                # 2. Duyệt qua từng chặng (Đi bộ -> Xe Bus -> Đi bộ...)
+                for step in legs["steps"]:
+                    mode = step["travel_mode"]
+                    
+                    if mode == "WALKING":
+                        dist = step["distance"]["text"]
+                        instr = clean_html(step["html_instructions"])
+                        # Thêm hướng dẫn đi bộ vào list
+                        route_steps.append(f"🚶 **Đi bộ ({dist}):** {instr}")
+                        
+                    elif mode == "TRANSIT":
+                        td = step["transit_details"]
+                        line = td["line"]["short_name"]
+                        dep_stop = td["departure_stop"]["name"]
+                        arr_stop = td["arrival_stop"]["name"]
+                        dep_time = td["departure_time"]["text"]
+                        num_stops = td["num_stops"]
+                        
+                        # Thêm thông tin xe bus vào list
+                        detail = f"🚌 **Bus {line}:** Đón tại trạm **{dep_stop}** lúc **{dep_time}**.\n   (Đi {num_stops} trạm, xuống tại **{arr_stop}**)"
+                        route_steps.append(detail)
+                        
+                        # Lưu thông tin xe đầu tiên để AI nhắc bằng giọng nói
+                        if not voice_summary:
+                            voice_summary = f"Đón xe số {line} tại trạm {dep_stop} lúc {dep_time}."
+
             elif transit.get("status") == "ZERO_RESULTS":
-                bus_info = "Không tìm thấy tuyến xe buýt phù hợp."
+                route_steps.append("⚠️ Không tìm thấy tuyến xe buýt nào phù hợp.")
+                voice_summary = "Không tìm thấy tuyến xe."
+            
+            # --- HIỂN THỊ GIAO DIỆN ---
+            st.markdown("#### 📝 Chi tiết di chuyển:")
+            for step_msg in route_steps:
+                if "Bus" in step_msg:
+                    st.success(step_msg) # Màu xanh cho xe bus
+                else:
+                    st.info(step_msg)    # Màu xanh dương cho đi bộ
 
             # ===== FINAL VOICE =====
-            voice = f"{direction}. {bus_info}"
-            st.success(f"🗣️ **AI nói:** {voice}")
+            # Kết hợp hướng dẫn từ GPS (nếu có) và hướng dẫn đón xe
+            full_voice = ""
+            if has_real_gps and direction != "Di chuyển đến điểm xuất phát":
+                full_voice = f"{direction}. Sau đó {voice_summary}"
+            else:
+                full_voice = voice_summary if voice_summary else "Đang tìm dữ liệu..."
+            
+            st.write(f"🗣️ **AI:** {full_voice}")
 
-            if voice != st.session_state.last_voice:
-                speak(voice)
-                st.session_state.last_voice = voice
+            if full_voice != st.session_state.last_voice:
+                speak(full_voice)
+                st.session_state.last_voice = full_voice
 
-            time.sleep(8)
+            time.sleep(15) # Tăng thời gian đọc lên 15s để người dùng kịp xem
             st.rerun()
             
         except Exception as e:
