@@ -3,115 +3,74 @@ import requests
 import time
 import re
 import uuid
-import io
-from gtts import gTTS
-from streamlit_js_eval import get_geolocation
-import google.generativeai as genai
 import streamlit.components.v1 as components
 
-# --- 1. CẤU HÌNH TRANG & CSS (MÀU XANH LÁ + CHỮ ĐEN) ---
+# --- Xử lý thư viện (Thêm try-except để tránh crash nếu chưa cài) ---
+try:
+    from gtts import gTTS
+    HAS_GTTS = True
+except ImportError:
+    HAS_GTTS = False
+
+try:
+    from streamlit_js_eval import get_geolocation
+    HAS_GEOLOCATION = True
+except ImportError:
+    HAS_GEOLOCATION = False
+
+import google.generativeai as genai
+
+# ================= CONFIG TRANG (LAYOUT WIDE ĐỂ CÓ CHỖ CHO MAP) =================
 st.set_page_config(
-    page_title="VnBus Green AI Pro",
-    page_icon="🍃",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_title="BusMate Pro", 
+    page_icon="🚌",
+    layout="wide" # Quan trọng: Mở rộng giao diện để chia cột
 )
 
-st.markdown("""
-<style>
-    /* Nền trang xanh nhạt */
-    .stApp { background-color: #ecfdf5; }
-    
-    /* Chỉnh màu chữ đen toàn bộ để tương phản tốt */
-    h1, h2, h3, h4, h5, h6, p, div, span, label, li {
-        color: #000000 !important;
-    }
-    
-    /* Input field */
-    .stTextInput > div > div > input {
-        background-color: #ffffff;
-        color: #000000;
-        border: 2px solid #10b981;
-        border-radius: 10px;
-    }
-    
-    /* Buttons */
-    .stButton > button {
-        background-color: #10b981 !important;
-        color: white !important;
-        font-weight: bold;
-        border-radius: 10px;
-        border: none;
-        width: 100%;
-        transition: all 0.3s;
-    }
-    .stButton > button:hover {
-        background-color: #059669 !important;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-
-    /* Sidebar */
-    [data-testid="stSidebar"] {
-        background-color: #ffffff;
-        border-right: 1px solid #10b981;
-    }
-    
-    /* Audio player */
-    audio { width: 100%; height: 30px; margin-top: 5px; }
-    
-    /* Status Box */
-    .status-box {
-        padding: 15px;
-        background-color: #ffffff;
-        border-radius: 10px;
-        border-left: 5px solid #10b981;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-        margin-bottom: 10px;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# --- 2. CẤU HÌNH API & STATE ---
-
-# Lấy Key từ Secrets hoặc Sidebar (để linh hoạt)
+# ================= SIDEBAR CONFIG (SỬA ĐỔI ĐỂ DỄ NHẬP KEY) =================
 with st.sidebar:
-    st.title("🍃 VnBus Green AI")
-    st.markdown("---")
-    
-    GOOGLE_MAPS_API_KEY = st.secrets.get("GOOGLE_MAPS_API_KEY")
+    st.header("Cấu hình hệ thống")
+    # Ưu tiên lấy từ secrets, nếu không có thì hiện ô nhập
+    GOOGLE_MAPS_API_KEY = st.secrets.get("GOOGLE_MAPS_API_KEY", "")
     if not GOOGLE_MAPS_API_KEY:
         GOOGLE_MAPS_API_KEY = st.text_input("🔑 Google Maps API Key", type="password")
         
-    GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
+    GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
     if not GEMINI_API_KEY:
         GEMINI_API_KEY = st.text_input("✨ Gemini API Key", type="password")
     
     st.markdown("---")
-    st.info("💡 Ứng dụng tự động cập nhật lộ trình và giọng nói mỗi 8 giây.")
+    st.info("Logic chỉ đường giữ nguyên bản (Sử dụng Google Directions API).")
 
-# Cấu hình Gemini
+# ================= AI CONFIG =================
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
-    ai = genai.GenerativeModel("gemini-2.5-flash-preview-09-2025") # Sử dụng model flash như code gốc
+    # Cập nhật model mới nhất để tránh lỗi
+    ai = genai.GenerativeModel("gemini-2.5-flash-preview-09-2025")
 
-# State Init
+# ================= STATE =================
 if "running" not in st.session_state:
     st.session_state.running = False
+
 if "last_voice" not in st.session_state:
     st.session_state.last_voice = ""
-# State cho Map (để hiển thị ở cột phải)
+
+# State mới để lưu vị trí hiển thị trên bản đồ (Cần thiết cho UI)
 if "map_origin" not in st.session_state: st.session_state.map_origin = ""
 if "map_dest" not in st.session_state: st.session_state.map_dest = ""
 
-# --- 3. CÁC HÀM UTILS (GIỮ NGUYÊN TỪ CODE GỐC) ---
+# ================= UTILS =================
 def speak(text):
-    # Lưu file tạm thời để phát
-    tts = gTTS(text=text, lang='vi')
-    audio_fp = io.BytesIO()
-    tts.write_to_fp(audio_fp)
-    audio_fp.seek(0)
-    st.audio(audio_fp, format='audio/mp3', autoplay=True)
+    if HAS_GTTS:
+        try:
+            # Dùng file tạm dạng BytesIO thay vì lưu file rác mp3
+            import io
+            fp = io.BytesIO()
+            gTTS(text=text, lang="vi").write_to_fp(fp)
+            fp.seek(0)
+            st.audio(fp, format='audio/mp3', autoplay=True)
+        except Exception as e:
+            st.warning(f"Lỗi âm thanh: {e}")
 
 def clean_html(t):
     return re.sub("<[^<]+?>", "", t)
@@ -122,107 +81,128 @@ def normalize_direction(text):
     if "phải" in t: return "Rẽ phải"
     return "Đi thẳng"
 
+# Hàm hiển thị bản đồ (Phần SỬA ĐỔI THÊM)
+def render_map(origin, destination, api_key):
+    if not api_key:
+        return """<div style="padding:20px; border:1px dashed #ccc; text-align:center">⚠️ Cần Google Maps API Key để hiện bản đồ</div>"""
+    
+    if origin and destination:
+        # Mode: Directions
+        src = f"https://www.google.com/maps/embed/v1/directions?key={api_key}&origin={origin}&destination={destination}&mode=transit"
+    else:
+        # Mode: View (Mặc định Sài Gòn)
+        src = f"https://www.google.com/maps/embed/v1/view?key={api_key}&center=10.7769,106.7009&zoom=14"
+        
+    return f"""
+    <div style="width:100%; height:600px; border-radius:15px; overflow:hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border: 2px solid #4CAF50;">
+        <iframe width="100%" height="100%" frameborder="0" style="border:0" src="{src}" allowfullscreen></iframe>
+    </div>
+    """
+
+# ================= AI: PARSE USER INTENT =================
 def ai_parse_input(user_text):
     prompt = f"""
     Người dùng khiếm thị nói: "{user_text}"
     Hãy trích xuất:
-    - điểm đi
-    - điểm đến
-    - ưu tiên (ít đổi xe / ít đi bộ / nhanh nhất)
-    Trả về dạng:
+    - điểm đi (origin)
+    - điểm đến (destination)
+    - ưu tiên (priority)
+    Trả về dạng chính xác:
     origin=...
     destination=...
     priority=...
+    Nếu không rõ, để trống.
     """
-    return ai.generate_content(prompt).text
+    try:
+        return ai.generate_content(prompt).text
+    except:
+        return ""
 
-def render_map_embed(origin, destination, api_key):
-    if api_key and origin and destination:
-        src = f"https://www.google.com/maps/embed/v1/directions?key={api_key}&origin={origin}&destination={destination}&mode=transit"
-        return f"""<div style="width:100%; height:500px; border-radius:15px; overflow:hidden; border: 2px solid #10b981; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"><iframe width="100%" height="100%" frameborder="0" style="border:0" src="{src}" allowfullscreen></iframe></div>"""
-    return """<div style="padding:40px; text-align:center; border:2px dashed #10b981; border-radius:15px; color:#000;">🗺️ Bản đồ sẽ hiện tại đây khi bắt đầu lộ trình.</div>"""
+# ================= UI LAYOUT (CHIA CỘT) =================
+st.title("BusMate - Bạn đồng hành xe bus")
 
+# Chia giao diện thành 2 cột: Trái (Điều khiển) - Phải (Bản đồ)
+col_control, col_map = st.columns([1, 1.2])
 
-# --- 4. GIAO DIỆN CHÍNH (LAYOUT 2 CỘT) ---
-col1, col2 = st.columns([1, 1.3])
+# --- CỘT PHẢI: BẢN ĐỒ ---
+with col_map:
+    st.markdown("### 🗺️ Bản đồ hỗ trợ")
+    # Render map dựa trên state đã lưu
+    map_html = render_map(st.session_state.map_origin, st.session_state.map_dest, GOOGLE_MAPS_API_KEY)
+    components.html(map_html, height=620)
 
-# --- CỘT PHẢI: BẢN ĐỒ (RENDER TRƯỚC ĐỂ LUÔN HIỂN THỊ) ---
-with col2:
-    st.subheader("🗺️ Bản đồ & Lộ trình")
-    # Hiển thị Map dựa trên state đã lưu
-    map_html = render_map_embed(st.session_state.map_origin, st.session_state.map_dest, GOOGLE_MAPS_API_KEY)
-    components.html(map_html, height=520)
-
-# --- CỘT TRÁI: ĐIỀU KHIỂN & LOGIC CHÍNH ---
-with col1:
-    st.subheader("🎙️ Trợ lý Giọng nói")
-    
+# --- CỘT TRÁI: ĐIỀU KHIỂN & LOGIC ---
+with col_control:
+    st.markdown("### 🎙️ Nhập lệnh")
     user_input = st.text_input(
-        "Nhập lộ trình (hoặc nói):", 
+        "Nhập lộ trình:",
         placeholder="Ví dụ: Tôi đi từ Đại học Bách Khoa đến Chợ Bến Thành..."
     )
 
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("▶️ Bắt đầu"):
+        if st.button("▶️ Bắt đầu", use_container_width=True):
             st.session_state.running = True
             st.session_state.last_voice = ""
             st.rerun()
     with c2:
-        if st.button("⏹️ Dừng lại"):
+        if st.button("⏹️ Dừng lại", use_container_width=True):
             st.session_state.running = False
             st.session_state.last_voice = ""
             st.rerun()
 
-    # ================= MAIN LOGIC (CỐT LÕI BUSMATE) =================
+    # ================= MAIN LOGIC (GIỮ NGUYÊN CỐT LÕI) =================
     if st.session_state.running:
-        st.markdown("<div class='status-box'>🟢 <b>Đang chạy:</b> Hệ thống đang theo dõi lộ trình...</div>", unsafe_allow_html=True)
+        st.info("🟢 Hệ thống đang chạy...")
         
         if not user_input:
             speak("Vui lòng nói hoặc nhập điểm đi và điểm đến")
-            st.warning("⚠️ Vui lòng nhập điểm đi và điểm đến.")
-            st.stop() # Dừng logic tại đây, nhưng Map bên phải vẫn hiển thị
-
-        if not GOOGLE_MAPS_API_KEY or not GEMINI_API_KEY:
-            st.error("⚠️ Vui lòng nhập đủ API Key ở Sidebar.")
+            st.warning("Vui lòng nhập liệu.")
+            st.stop()
+            
+        if not GEMINI_API_KEY or not GOOGLE_MAPS_API_KEY:
+            st.error("Thiếu API Key (Nhập bên trái)")
             st.stop()
 
         # ===== AI hiểu yêu cầu =====
-        try:
-            ai_result = ai_parse_input(user_input)
-            
-            # Parse đơn giản
-            lines = ai_result.splitlines()
-            origin = destination = ""
-            for l in lines:
-                if "origin" in l: origin = l.split("=")[1].strip()
-                if "destination" in l: destination = l.split("=")[1].strip()
-            
-            # [TÍNH NĂNG MỚI] Cập nhật Map State để cột phải hiển thị
-            if origin and destination:
+        ai_result = ai_parse_input(user_input)
+
+        # Parse đơn giản
+        lines = ai_result.splitlines()
+        origin = destination = ""
+        for l in lines:
+            if "origin" in l:
+                origin = l.split("=")[1].strip()
+            if "destination" in l:
+                destination = l.split("=")[1].strip()
+
+        # [SỬA ĐỔI] Cập nhật Map State nếu có dữ liệu mới
+        if origin and destination:
+            if origin != st.session_state.map_origin or destination != st.session_state.map_dest:
                 st.session_state.map_origin = origin
                 st.session_state.map_dest = destination
+                st.rerun() # Refresh để cập nhật bản đồ ngay lập tức
 
-            st.write(f"📍 **Điểm đi:** {origin}")
-            st.write(f"🏁 **Điểm đến:** {destination}")
-
-            # ===== GPS (streamlit_js_eval) =====
+        # ===== GPS =====
+        if HAS_GEOLOCATION:
             loc = get_geolocation()
             if loc is None:
                 speak("Đang xác định vị trí của bạn")
-                st.info("📡 Đang lấy tín hiệu GPS...")
-                time.sleep(3) # Đợi 1 chút để GPS load
-                st.rerun()
+                st.warning("Đang chờ tín hiệu GPS...")
                 st.stop()
-
+            
             lat = loc["coords"]["latitude"]
             lng = loc["coords"]["longitude"]
-            st.success(f"📡 GPS: {lat:.4f}, {lng:.4f}")
+        else:
+            # Fallback nếu không có thư viện GPS (Test mode)
+            lat, lng = 10.7769, 106.7009
+            st.warning("⚠️ Module GPS không khả dụng. Dùng tọa độ giả lập.")
 
-            # ===== WALK TO STOP (Google Directions API) =====
+        # ===== WALK TO STOP (Google Directions API) =====
+        try:
             walk_params = {
                 "origin": f"{lat},{lng}",
-                "destination": origin, # Logic gốc: đi bộ từ GPS đến điểm Origin (có thể là trạm xe)
+                "destination": origin,
                 "mode": "walking",
                 "language": "vi",
                 "key": GOOGLE_MAPS_API_KEY
@@ -233,11 +213,11 @@ with col1:
                 params=walk_params
             ).json()
 
-            direction = "Không tìm thấy đường đi bộ"
+            direction = "Đi thẳng"
             if walk.get("routes"):
                 step = clean_html(walk["routes"][0]["legs"][0]["steps"][0]["html_instructions"])
                 direction = normalize_direction(step)
-
+            
             # ===== BUS ETA (Google Directions API) =====
             transit_params = {
                 "origin": origin,
@@ -254,7 +234,7 @@ with col1:
                 params=transit_params
             ).json()
 
-            bus_info = "Chưa có thông tin xe buýt"
+            bus_info = "Đang chờ xe bus"
             if transit.get("routes"):
                 for s in transit["routes"][0]["legs"][0]["steps"]:
                     if s["travel_mode"] == "TRANSIT":
@@ -263,27 +243,23 @@ with col1:
                         time_txt = td["departure_time"]["text"]
                         bus_info = f"Xe số {line} sẽ đến lúc {time_txt}"
                         break
-            
+            elif transit.get("status") == "ZERO_RESULTS":
+                bus_info = "Không tìm thấy tuyến xe buýt phù hợp."
+
             # ===== FINAL VOICE =====
             voice = f"{direction}. {bus_info}"
-            
-            # Hiển thị text ra màn hình
-            st.info(f"🔊 **AI:** {voice}")
+            st.success(f"🗣️ **AI nói:** {voice}")
 
             if voice != st.session_state.last_voice:
                 speak(voice)
                 st.session_state.last_voice = voice
 
-            # Tự động chạy lại sau 8s để cập nhật
             time.sleep(8)
             st.rerun()
             
         except Exception as e:
-            st.error(f"Đã xảy ra lỗi: {e}")
-            time.sleep(5)
-            st.rerun()
+            st.error(f"Lỗi API: {e}")
+            st.stop()
 
     else:
-        st.info("👋 Ứng dụng đang chờ. Nhấn **Bắt đầu** để sử dụng.")
-
-
+        st.info("Ứng dụng đang chờ. Nhấn Bắt đầu để sử dụng.")
