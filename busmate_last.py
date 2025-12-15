@@ -7,14 +7,14 @@ import json
 import streamlit.components.v1 as components
 import os
 
-# --- IMPORT DỮ LIỆU TỪ FILE MỚI ---
+# --- IMPORT DATA ---
 try:
     from data_and_prompts import get_full_system_instruction, BUS_DATA
 except ImportError:
     def get_full_system_instruction(): return "You are a smart bus assistant."
     BUS_DATA = []
 
-# --- Xử lý thư viện ---
+# --- LIBRARY HANDLING ---
 try:
     from gtts import gTTS
     HAS_GTTS = True
@@ -35,7 +35,7 @@ except ImportError:
 
 import google.generativeai as genai
 
-# ================= CONFIG TRANG =================
+# ================= PAGE CONFIG =================
 st.set_page_config(
     page_title="BusMate - Threads Style", 
     page_icon="🚌",
@@ -43,86 +43,88 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- CSS PHONG CÁCH THREADS (ĐEN - TRẮNG - XÁM) ---
+# --- CSS: THREADS STYLE (DARK MODE) ---
 st.markdown("""
 <style>
-    /* 1. Nền chính (Threads Background) */
+    /* 1. Main Background */
     .stApp { 
-        background-color: #101010; /* Đen sâu */
+        background-color: #101010; /* Deep Black */
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         color: #F3F5F7;
     }
     
-    /* 2. Sidebar (Minimalist) */
+    /* 2. Sidebar */
     [data-testid="stSidebar"] { 
         background-color: #101010; 
-        border-right: 1px solid #333333; /* Viền xám tối */
+        border-right: 1px solid #333333; 
     }
     
-    /* 3. Typography (Chữ) */
+    /* 3. Typography */
     h1, h2, h3 {
         color: #FFFFFF !important;
-        font-weight: 700 !important;
-        letter-spacing: -0.5px; /* Phong cách hiện đại */
+        font-weight: 800 !important;
+        letter-spacing: -0.5px;
     }
     p, label, li, span, div {
         color: #F3F5F7;
     }
-    .stCaption { color: #777777 !important; } /* Xám trung tính cho chú thích */
+    .stCaption { color: #777777 !important; }
     
-    /* 4. Ô nhập liệu (Input Fields) - Bo tròn kiểu Threads */
+    /* 4. Input Fields */
     .stTextInput > div > div > input {
-        background-color: #1E1E1E; /* Xám đen nhẹ */
+        background-color: #1E1E1E; 
         color: #FFFFFF;
         border: 1px solid #333333;
-        border-radius: 16px; /* Bo tròn nhiều */
+        border-radius: 16px; 
         padding: 12px 15px;
         font-size: 15px;
     }
     .stTextInput > div > div > input:focus {
-        border-color: #555555;
+        border-color: #777;
         background-color: #262626;
     }
     
-    /* 5. Nút bấm (Buttons) - ĐIỀU CHỈNH MÀU SẮC CHO NỔI BẬT */
+    /* 5. BUTTONS - HIGH CONTRAST */
     
-    /* Nút thường (Secondary - Stop): Viền đỏ, nền tối */
+    /* Secondary Button (Stop): Dark Grey with Red text */
     .stButton > button {
-        background-color: rgba(255, 75, 75, 0.1) !important; 
-        color: #FF4B4B !important;
+        background-color: #262626 !important; 
+        color: #FF5252 !important; 
         font-weight: 600;
         border-radius: 20px;
-        border: 1px solid #FF4B4B;
-        padding: 0.5rem 1.2rem;
+        border: 1px solid #333333;
+        padding: 0.6rem 1.2rem;
         transition: all 0.2s;
     }
     .stButton > button:hover {
-        background-color: #FF4B4B !important;
-        color: white !important;
+        background-color: #330000 !important;
+        border-color: #FF5252 !important;
+        color: #FF8080 !important;
         transform: scale(0.98);
     }
 
-    /* Nút Primary (Start): Xanh dương sáng, không viền, có bóng đổ */
-    /* Target nút có type="primary" */
+    /* Primary Button (Start): White Background, Black Text */
+    /* Target buttons with type="primary" */
     .stButton button[kind="primary"] {
-        background-color: #0095F6 !important; /* Xanh Threads/Instagram */
-        color: #FFFFFF !important;
+        background-color: #FFFFFF !important; 
+        color: #000000 !important;
         border: none !important;
-        box-shadow: 0 4px 15px rgba(0, 149, 246, 0.4); /* Glow effect */
+        font-weight: 700 !important;
+        box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
     }
     .stButton button[kind="primary"]:hover {
-        background-color: #0074CC !important;
-        box-shadow: 0 6px 20px rgba(0, 149, 246, 0.6);
+        background-color: #E0E0E0 !important;
         transform: scale(1.02) !important;
+        box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
     }
     
-    /* 6. TABS (THIẾT KẾ ĐẶC BIỆT: BOX STYLE) */
+    /* 6. TABS (BOX STYLE) */
     .stTabs [data-baseweb="tab-highlight"] { display: none; }
     
     .stTabs [data-baseweb="tab-list"] {
         background-color: transparent;
         gap: 8px;
-        padding-bottom: 10px;
+        padding-bottom: 15px;
         border-bottom: 1px solid #333333;
     }
     
@@ -130,7 +132,7 @@ st.markdown("""
         background-color: transparent;
         border: 1px solid transparent;
         border-radius: 12px;
-        padding: 8px 16px;
+        padding: 10px 20px;
         height: auto;
         transition: all 0.2s;
     }
@@ -153,7 +155,7 @@ st.markdown("""
     /* 7. Chat Bubbles */
     [data-testid="stChatMessage"] {
         background-color: transparent;
-        padding: 12px 0;
+        padding: 15px 0;
         border-bottom: 1px solid #222;
     }
     [data-testid="stChatMessageAvatar"] {
@@ -161,17 +163,11 @@ st.markdown("""
         color: #FFF;
     }
     
-    /* 8. Alerts/Toasts */
-    .stAlert {
-        background-color: #1E1E1E;
-        color: #FFF;
-        border: 1px solid #333;
-        border-radius: 12px;
-    }
-    
+    /* 8. Map Container */
     iframe {
         border-radius: 16px !important;
         border: 1px solid #333 !important;
+        filter: grayscale(20%) invert(90%) hue-rotate(180deg); 
     }
     
     h1 { margin-bottom: 0.5rem; }
@@ -199,7 +195,7 @@ with st.sidebar:
     
     st.markdown("---")
     enable_gps = st.checkbox("Enable GPS", value=True)
-    st.caption("Allow access to location for real-time navigation.")
+    st.caption("Allow location access for navigation.")
 
 # ================= AI CONFIG =================
 if GEMINI_API_KEY:
@@ -241,7 +237,7 @@ def render_map(origin, destination, api_key):
         return f"""<div style="{style} display:flex; align-items:center; justify-content:center; background:#1E1E1E; color:#777;">API Key Required</div>"""
     
     if origin and destination:
-        src = f"https://www.google.com/maps/embed/v1/directions?key={api_key}&origin={origin}&destination={destination}&mode=transit&maptype=roadmap&style=feature:all|element:all|saturation:-100|lightness:-50" # Darker map hint
+        src = f"https://www.google.com/maps/embed/v1/directions?key={api_key}&origin={origin}&destination={destination}&mode=transit&maptype=roadmap&style=feature:all|element:all|saturation:-100|lightness:-50"
     else:
         src = f"https://www.google.com/maps/embed/v1/view?key={api_key}&center=10.7769,106.7009&zoom=14"
     return f"""<div style="{style}"><iframe width="100%" height="100%" frameborder="0" style="border:0" src="{src}" allowfullscreen></iframe></div>"""
@@ -267,7 +263,6 @@ st.caption("Smart Bus Assistant • @busmate_ai")
 sound_placeholder = st.empty()
 
 # --- TABS (THREADS STYLE) ---
-# Tabs have surrounding box when selected due to CSS above
 tab_nav, tab_chat = st.tabs(["Navigation", "AI Chat"])
 
 # ================= TAB 1: NAVIGATION =================
@@ -282,12 +277,13 @@ with tab_nav:
     with col_control:
         st.markdown("### Find Route")
         with st.container():
+            # Placeholder vẫn giữ tiếng Việt
             user_input = st.text_input("Where to?", placeholder="Bến Thành đến Suối Tiên...")
             st.write("") 
             
             c1, c2 = st.columns(2)
             with c1:
-                # "Start" button uses type="primary" to follow blue CSS
+                # Primary Button: Start
                 if st.button("Start", type="primary"):
                     st.session_state.running = False 
                     st.session_state.last_voice = "" 
@@ -305,7 +301,7 @@ with tab_nav:
                     st.rerun()
                     
             with c2:
-                # "Stop" button default (Secondary) follows red border CSS
+                # Secondary Button: Stop
                 if st.button("Stop"):
                     st.session_state.running = False
                     st.session_state.last_voice = ""
@@ -383,7 +379,6 @@ with tab_nav:
                         arr = step0["transit_details"]["departure_time"]["text"]
                         voice_msg = f"Xe {bus} sắp đến lúc {arr}."
                     
-                    # Minimalist instructions list
                     st.markdown("---")
                     for s in legs["steps"]:
                         mode = s["travel_mode"]
@@ -410,14 +405,13 @@ with tab_nav:
 
 # ================= TAB 2: AI CHATBOT =================
 with tab_chat:
-    # Chat container
     chat_container = st.container()
     with chat_container:
         for msg in st.session_state.chat_history:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
             
-    # Input Chat
+    # Input Chat (Placeholder tiếng Việt)
     if prompt := st.chat_input("Start a thread..."):
         st.session_state.chat_history.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
