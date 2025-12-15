@@ -7,14 +7,14 @@ import json
 import streamlit.components.v1 as components
 import os
 
-# --- IMPORT DỮ LIỆU TỪ FILE MỚI ---
+# --- IMPORT DATA ---
 try:
     from data_and_prompts import get_full_system_instruction, BUS_DATA
 except ImportError:
-    def get_full_system_instruction(): return "Bạn là trợ lý xe buýt thông minh."
+    def get_full_system_instruction(): return "You are a smart bus assistant."
     BUS_DATA = []
 
-# --- Xử lý thư viện ---
+# --- LIBRARY HANDLING ---
 try:
     from gtts import gTTS
     HAS_GTTS = True
@@ -35,38 +35,38 @@ except ImportError:
 
 import google.generativeai as genai
 
-# ================= CONFIG TRANG =================
+# ================= PAGE CONFIG =================
 st.set_page_config(
     page_title="BusMate Pro", 
     page_icon="🚌",
     layout="wide"
 )
 
-# --- CSS TÙY CHỈNH: DARK MODE (GIAO DIỆN TỐI) ---
+# --- CUSTOM CSS (DARK MODE) ---
 st.markdown("""
 <style>
-    /* 1. Nền chính (Main Background) */
+    /* 1. Main Background */
     .stApp { 
-        background-color: #0E1117; /* Màu đen xanh đậm (Dark Theme chuẩn) */
+        background-color: #0E1117; 
         color: #FAFAFA;
     }
     
-    /* 2. Sidebar (Thanh bên) */
+    /* 2. Sidebar */
     [data-testid="stSidebar"] { 
-        background-color: #262730; /* Màu xám đậm hơn nền chính */
+        background-color: #262730; 
         border-right: 1px solid #41444C;
     }
     
-    /* 3. Màu chữ (Text Colors) */
+    /* 3. Text Colors */
     h1, h2, h3, h4, h5, h6, span, div, label, p, li {
-        color: #FAFAFA !important; /* Chữ trắng sáng */
+        color: #FAFAFA !important; 
     }
-    .stCaption { color: #B0B0B0 !important; } /* Chữ chú thích màu xám nhạt */
+    .stCaption { color: #B0B0B0 !important; } 
     
-    /* 4. Ô nhập liệu (Inputs) */
+    /* 4. Inputs */
     .stTextInput > div > div > input {
         color: #FAFAFA;
-        background-color: #262730; /* Nền tối đồng bộ sidebar */
+        background-color: #262730; 
         border: 1px solid #41444C;
         border-radius: 8px;
     }
@@ -75,9 +75,9 @@ st.markdown("""
         box-shadow: 0 0 0 1px #007BFF;
     }
     
-    /* 5. Nút bấm (Buttons) */
+    /* 5. Buttons */
     .stButton > button {
-        background-color: #007BFF !important; /* Xanh dương nổi bật trên nền đen */
+        background-color: #007BFF !important; 
         color: white !important;
         font-weight: bold;
         border-radius: 8px;
@@ -90,7 +90,7 @@ st.markdown("""
         transform: translateY(-2px);
     }
     
-    /* 6. Tabs (Thẻ chuyển đổi) - Được thiết kế lại cho Dark Mode */
+    /* 6. Tabs */
     .stTabs [data-baseweb="tab-list"] {
         border-bottom: 2px solid #41444C;
         gap: 8px;
@@ -100,29 +100,29 @@ st.markdown("""
         border: none;
     }
     
-    /* Chỉnh màu chữ tiêu đề Tab */
+    /* Tab Title Colors */
     .stTabs button[data-baseweb="tab"] div p {
-        color: #A6A9B4 !important; /* Xám khi chưa chọn */
+        color: #A6A9B4 !important; 
         font-weight: 600;
         font-size: 16px;
     }
     
-    /* Tab đang chọn (Active) */
+    /* Active Tab */
     .stTabs button[data-baseweb="tab"][aria-selected="true"] div p {
-        color: #007BFF !important; /* Xanh dương sáng khi chọn */
+        color: #007BFF !important; 
     }
     .stTabs [data-baseweb="tab-highlight"] {
-        background-color: #007BFF !important; /* Gạch chân màu xanh */
+        background-color: #007BFF !important; 
     }
     
-    /* 7. Các khung thông báo (Alerts/Info/Success) */
+    /* 7. Alerts */
     .stAlert {
-        background-color: #262730; /* Nền tối */
+        background-color: #262730; 
         color: #FAFAFA;
         border: 1px solid #41444C;
     }
     
-    /* Tiêu đề chính */
+    /* Main Title */
     h1 { 
         color: #007BFF !important; 
     }
@@ -131,24 +131,24 @@ st.markdown("""
 
 # ================= SIDEBAR CONFIG =================
 with st.sidebar:
-    st.header("⚙️ Cấu hình")
+    st.header("⚙️ System Settings")
     if "GOOGLE_MAPS_API_KEY" in st.secrets:
         GOOGLE_MAPS_API_KEY = st.secrets["GOOGLE_MAPS_API_KEY"]
-        st.success("✅ Google Maps: Sẵn sàng")
+        st.success("✅ Google Maps: Connected")
     else:
-        st.error("❌ Thiếu Google Maps Key")
+        st.error("❌ Missing Google Maps Key")
         GOOGLE_MAPS_API_KEY = None
 
     if "GEMINI_API_KEY" in st.secrets:
         GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-        st.success("✅ Gemini AI: Sẵn sàng")
+        st.success("✅ Gemini AI: Connected")
     else:
-        st.error("❌ Thiếu Gemini Key")
+        st.error("❌ Missing Gemini Key")
         GEMINI_API_KEY = None
     
     st.markdown("---")
-    enable_gps = st.checkbox("📍 Bật định vị GPS", value=True)
-    st.info("💡 Mẹo: Sử dụng tab '💬 Hỏi đáp Bot' để chat.")
+    enable_gps = st.checkbox("📍 Enable GPS", value=True)
+    st.info("💡 Tip: Switch to '💬 AI Chatbot' tab to ask questions.")
 
 # ================= AI CONFIG =================
 if GEMINI_API_KEY:
@@ -165,7 +165,7 @@ if "map_origin" not in st.session_state: st.session_state.map_origin = ""
 if "map_dest" not in st.session_state: st.session_state.map_dest = ""
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = [
-        {"role": "assistant", "content": "Xin chào! Mình là trợ lý ảo BusMate 🚌. Bạn cần tìm tuyến xe nào? (Ví dụ: 'Xe 152 đi đâu?', 'Vé xe 19 bao nhiêu?')"}
+        {"role": "assistant", "content": "Hello! I am BusMate 🚌. How can I help you? (Ví dụ: 'Xe 152 đi đâu?', 'Vé xe 19 bao nhiêu?')"}
     ]
 
 # ================= UTILS =================
@@ -184,7 +184,7 @@ def clean_html(t): return re.sub("<[^<]+?>", "", t)
 
 def render_map(origin, destination, api_key):
     if not api_key:
-        return """<div style="padding:20px; border:2px dashed #444; border-radius:10px; text-align:center; color: #aaa;">⚠️ Cần API Key để hiện bản đồ</div>"""
+        return """<div style="padding:20px; border:2px dashed #444; border-radius:10px; text-align:center; color: #aaa;">⚠️ API Key Required</div>"""
     if origin and destination:
         src = f"https://www.google.com/maps/embed/v1/directions?key={api_key}&origin={origin}&destination={destination}&mode=transit"
     else:
@@ -193,9 +193,9 @@ def render_map(origin, destination, api_key):
 
 def ai_parse_input(user_text):
     prompt = f"""
-    Phân tích yêu cầu tìm đường: "{user_text}"
-    Trả về JSON: {{"origin": "...", "destination": "..."}}
-    Nếu origin không rõ (ví dụ 'từ đây'), để null.
+    Analyze user request: "{user_text}"
+    Return JSON: {{"origin": "...", "destination": "..."}}
+    If origin is unclear (e.g. 'from here'), leave null.
     """
     try:
         res = ai.generate_content(prompt).text
@@ -205,30 +205,31 @@ def ai_parse_input(user_text):
         return {}
 
 # ================= UI LAYOUT =================
-st.title("BusMate - Bạn đồng hành xe bus")
+st.title("BusMate - Your Bus Companion")
 
-# Khung âm thanh (Global)
+# Audio Placeholder
 sound_placeholder = st.empty()
 
-# --- TẠO TAB (Sử dụng biểu tượng emoji lớn để dễ thấy) ---
-tab_nav, tab_chat = st.tabs(["🧭 DẪN ĐƯỜNG REAL-TIME", "💬 HỎI ĐÁP BOT"])
+# --- TABS ---
+tab_nav, tab_chat = st.tabs(["🧭 REAL-TIME NAVIGATION", "💬 AI CHATBOT"])
 
-# ================= TAB 1: DẪN ĐƯỜNG =================
+# ================= TAB 1: NAVIGATION =================
 with tab_nav:
     col_control, col_map = st.columns([1, 1.2])
 
     with col_map:
-        st.markdown("### 🗺️ Bản đồ hỗ trợ")
+        st.markdown("### 🗺️ Live Map")
         map_html = render_map(st.session_state.map_origin, st.session_state.map_dest, GOOGLE_MAPS_API_KEY)
         components.html(map_html, height=620)
 
     with col_control:
-        st.markdown("### 🎙️ Nhập lệnh")
-        user_input = st.text_input("Nhập lộ trình:", placeholder="Ví dụ: Bến Thành đi Suối Tiên...")
+        st.markdown("### 🎙️ Input Route")
+        # Giữ placeholder tiếng Việt theo yêu cầu
+        user_input = st.text_input("Enter route:", placeholder="Ví dụ: Bến Thành đi Suối Tiên...")
 
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("▶️ Bắt đầu", use_container_width=True):
+            if st.button("▶️ Start", use_container_width=True):
                 st.session_state.running = False 
                 st.session_state.last_voice = "" 
                 sound_placeholder.empty()
@@ -246,18 +247,18 @@ with tab_nav:
                 st.rerun()
                 
         with c2:
-            if st.button("⏹️ Dừng lại", use_container_width=True):
+            if st.button("⏹️ Stop", use_container_width=True):
                 st.session_state.running = False
                 st.session_state.last_voice = ""
                 sound_placeholder.empty()
                 st.rerun()
 
-    # --- FRAGMENT LOGIC (Dẫn đường) ---
+    # --- FRAGMENT LOGIC (Navigation) ---
     @fragment
     def tracking_logic():
         if st.session_state.running:
             if not GEMINI_API_KEY or not GOOGLE_MAPS_API_KEY:
-                st.error("Thiếu API Key.")
+                st.error("Missing API Key.")
                 return
 
             lat, lng = 10.7769, 106.7009
@@ -270,41 +271,41 @@ with tab_nav:
                     lng = loc["coords"]["longitude"]
                     has_real_gps = True
                 else:
-                    st.warning("📡 Đang tìm GPS...")
+                    st.warning("📡 Searching for GPS...")
                     time.sleep(3)
                     st.rerun()
                     return
             else:
                 if st.session_state.map_origin == "Current Location":
-                    st.warning("⚠️ GPS tắt. Dùng tọa độ giả lập.")
+                    st.warning("⚠️ GPS disabled. Using simulated location.")
 
             try:
                 dest = st.session_state.map_dest
                 user_origin = st.session_state.map_origin
                 
                 if not dest:
-                    st.warning("Chưa có điểm đến.")
+                    st.warning("No destination set.")
                     return
 
-                # Logic chọn điểm đi
+                # Logic to determine origin
                 is_gps_mode = not user_origin or any(x in str(user_origin).lower() for x in ["current location", "vị trí hiện tại", "tại đây"])
                 
                 if is_gps_mode:
                     if has_real_gps:
                         nav_origin = f"{lat},{lng}"
-                        st.toast("📍 Dẫn đường từ GPS hiện tại.")
+                        st.toast("📍 Navigating from current GPS location.")
                     else:
                         nav_origin = "Hồ Chí Minh"
                 else:
                     nav_origin = user_origin
-                    st.toast(f"ℹ️ Dẫn đường từ: {user_origin}")
+                    st.toast(f"ℹ️ Navigating from: {user_origin}")
 
                 # API Google
                 transit_params = {
                     "origin": nav_origin, 
                     "destination": dest,
                     "mode": "transit", "transit_mode": "bus",
-                    "departure_time": "now", "language": "vi",
+                    "departure_time": "now", "language": "vi", # Giữ language='vi' để Google trả về tên đường tiếng Việt
                     "key": GOOGLE_MAPS_API_KEY
                 }
                 
@@ -313,7 +314,7 @@ with tab_nav:
                 
                 if resp.get("routes"):
                     legs = resp["routes"][0]["legs"][0]
-                    st.info(f"⏱️ Thời gian: **{legs['duration']['text']}**")
+                    st.info(f"⏱️ Time: **{legs['duration']['text']}**")
                     
                     step0 = legs["steps"][0]
                     dist0 = step0["distance"]["text"]
@@ -326,7 +327,7 @@ with tab_nav:
                         arr = step0["transit_details"]["departure_time"]["text"]
                         voice_msg = f"Xe {bus} sắp đến lúc {arr}."
                     
-                    st.markdown("#### 📝 Lộ trình:")
+                    st.markdown("#### 📝 Route Details:")
                     for s in legs["steps"]:
                         mode = s["travel_mode"]
                         if mode == "WALKING":
@@ -335,7 +336,7 @@ with tab_nav:
                             td = s["transit_details"]
                             st.success(f"🚌 Bus {td['line']['short_name']}: {td['departure_stop']['name']} ➔ {td['arrival_stop']['name']}")
                 else:
-                    st.error("Không tìm thấy đường.")
+                    st.error("No route found.")
 
                 if voice_msg and voice_msg != st.session_state.last_voice:
                     speak(voice_msg)
@@ -345,36 +346,36 @@ with tab_nav:
                 st.rerun()
                 
             except Exception as e:
-                st.error(f"Lỗi: {e}")
+                st.error(f"Error: {e}")
 
     with col_control:
         tracking_logic()
 
-# ================= TAB 2: BOT CHAT HỎI ĐÁP =================
+# ================= TAB 2: AI CHATBOT =================
 with tab_chat:
-    st.markdown("### 🤖 Trợ lý ảo thông minh")
-    st.caption("Chuyên gia xe buýt TP.HCM - Hỏi là đáp!")
+    st.markdown("### 🤖 Smart AI Assistant")
+    st.caption("HCMC Bus Expert - Ask me anything!")
     
-    # Hiển thị lịch sử chat
+    # Display Chat History
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
             
-    # Input Chat
-    if prompt := st.chat_input("Hỏi tôi về xe buýt (VD: Xe 19 đi đâu? Giá vé xe 152?)"):
+    # Input Chat (Giữ placeholder tiếng Việt)
+    if prompt := st.chat_input("Ask about buses (VD: Xe 19 đi đâu? Giá vé xe 152?)"):
         st.session_state.chat_history.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
             
         with st.chat_message("assistant"):
-            with st.spinner("Đang trả lời..."):
+            with st.spinner("Thinking..."):
                 try:
                     if GEMINI_API_KEY:
                         chat = ai_chatbot.start_chat(history=[])
                         response = chat.send_message(prompt)
                         bot_reply = response.text
                         
-                        # --- SMART LINKING (Tự động chuyển Tab) ---
+                        # --- SMART LINKING ---
                         if "MAP_CMD:" in bot_reply:
                             try:
                                 cmd_line = [l for l in bot_reply.splitlines() if "MAP_CMD:" in l][0]
@@ -385,16 +386,15 @@ with tab_chat:
                                     
                                     st.session_state.map_origin = o_cmd
                                     st.session_state.map_dest = d_cmd
-                                    st.toast(f"🗺️ Đã cập nhật bản đồ: {o_cmd} ➔ {d_cmd}. Chuyển sang Tab Dẫn đường để xem!", icon="🚀")
+                                    st.toast(f"🗺️ Map updated: {o_cmd} ➔ {d_cmd}. Switch to Navigation Tab!", icon="🚀")
                             except: pass
                             bot_reply = re.sub(r"MAP_CMD:.*", "", bot_reply).strip()
 
                     else:
-                        bot_reply = "Vui lòng nhập API Key."
+                        bot_reply = "Please enter API Key."
 
                     st.markdown(bot_reply)
                     st.session_state.chat_history.append({"role": "assistant", "content": bot_reply})
                     
                 except Exception as e:
-                    st.error(f"Lỗi: {e}")
-
+                    st.error(f"Error: {e}")
