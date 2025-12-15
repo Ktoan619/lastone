@@ -84,38 +84,37 @@ st.markdown("""
         background-color: #262626;
     }
     
-    /* 5. BUTTONS - HIGH CONTRAST */
+    /* 5. BUTTONS - HIGH CONTRAST & VISIBLE */
     
-    /* Secondary Button (Stop): Dark Grey with Red text */
+    /* Nút Thường (Stop): Viền Đỏ sáng, Nền trong suốt hoặc tối */
     .stButton > button {
-        background-color: #262626 !important; 
-        color: #FF5252 !important; 
-        font-weight: 600;
-        border-radius: 20px;
-        border: 1px solid #333333;
-        padding: 0.6rem 1.2rem;
+        background-color: transparent !important; 
+        color: #FF4B4B !important; 
+        font-weight: 700 !important;
+        border-radius: 24px;
+        border: 2px solid #FF4B4B !important; /* Viền dày hơn */
+        padding: 0.5rem 1.2rem;
         transition: all 0.2s;
     }
     .stButton > button:hover {
-        background-color: #330000 !important;
-        border-color: #FF5252 !important;
-        color: #FF8080 !important;
-        transform: scale(0.98);
+        background-color: rgba(255, 75, 75, 0.15) !important;
+        box-shadow: 0 0 10px rgba(255, 75, 75, 0.3);
+        transform: scale(1.02);
     }
 
-    /* Primary Button (Start): White Background, Black Text */
+    /* Nút Chính (Start): Nền Xanh Threads, Chữ Trắng (Rất nổi) */
     /* Target buttons with type="primary" */
     .stButton button[kind="primary"] {
-        background-color: #FFFFFF !important; 
-        color: #000000 !important;
+        background-color: #0095F6 !important; /* Threads Blue */
+        color: #FFFFFF !important;
         border: none !important;
         font-weight: 700 !important;
-        box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
+        box-shadow: 0 4px 15px rgba(0, 149, 246, 0.4); /* Glow xanh */
     }
     .stButton button[kind="primary"]:hover {
-        background-color: #E0E0E0 !important;
+        background-color: #0074CC !important;
         transform: scale(1.02) !important;
-        box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
+        box-shadow: 0 6px 20px rgba(0, 149, 246, 0.6);
     }
     
     /* 6. TABS (BOX STYLE) */
@@ -283,7 +282,7 @@ with tab_nav:
             
             c1, c2 = st.columns(2)
             with c1:
-                # Primary Button: Start
+                # Primary Button: Start (Type Primary để CSS bắt được)
                 if st.button("Start", type="primary"):
                     st.session_state.running = False 
                     st.session_state.last_voice = "" 
@@ -301,7 +300,7 @@ with tab_nav:
                     st.rerun()
                     
             with c2:
-                # Secondary Button: Stop
+                # Secondary Button: Stop (Default type)
                 if st.button("Stop"):
                     st.session_state.running = False
                     st.session_state.last_voice = ""
@@ -379,6 +378,7 @@ with tab_nav:
                         arr = step0["transit_details"]["departure_time"]["text"]
                         voice_msg = f"Xe {bus} sắp đến lúc {arr}."
                     
+                    # Minimalist instructions list
                     st.markdown("---")
                     for s in legs["steps"]:
                         mode = s["travel_mode"]
