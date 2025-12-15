@@ -147,7 +147,7 @@ with st.sidebar:
         GEMINI_API_KEY = None
     
     st.markdown("---")
-    enable_gps = st.checkbox("📍 Enable GPS", value=True)
+    enable_gps = st.checkbox(" Enable GPS", value=True)
     st.info("💡 Tip: Switch to '💬 AI Chatbot' tab to ask questions.")
 
 # ================= AI CONFIG =================
@@ -211,14 +211,14 @@ st.title("BusMate - Your Bus Companion")
 sound_placeholder = st.empty()
 
 # --- TABS ---
-tab_nav, tab_chat = st.tabs(["🧭 REAL-TIME NAVIGATION", "💬 AI CHATBOT"])
+tab_nav, tab_chat = st.tabs([" REAL-TIME NAVIGATION", " AI CHATBOT"])
 
 # ================= TAB 1: NAVIGATION =================
 with tab_nav:
     col_control, col_map = st.columns([1, 1.2])
 
     with col_map:
-        st.markdown("### 🗺️ Live Map")
+        st.markdown("###  Live Map")
         map_html = render_map(st.session_state.map_origin, st.session_state.map_dest, GOOGLE_MAPS_API_KEY)
         components.html(map_html, height=620)
 
@@ -398,3 +398,4 @@ with tab_chat:
                     
                 except Exception as e:
                     st.error(f"Error: {e}")
+
